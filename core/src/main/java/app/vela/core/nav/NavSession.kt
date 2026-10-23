@@ -1126,15 +1126,7 @@ class NavSession @Inject constructor(
             // A directions fetch may succeed after the car has already taken another road.
             // Reject a route based on an old origin if it does not pass anywhere near the
             // newest fix, rather than adopting guidance behind the moving car.
-            val newest = lastLoc
-            if (newest != null && newest.distanceTo(loc) > 150.0 &&
-                app.vela.core.nav.RouteProjection.alongMeters(
-                    r.polyline,
-                    app.vela.core.nav.RouteProjection.cumulative(r.polyline),
-                    newest,
-                    70.0,
-                ) == null
-            ) {
+            if (!RerouteFreshness.canAdopt(r, loc, lastLoc)) {
                 note("reroute returned behind current position; retrying from a fresh fix")
                 pendingLatchClear.set(true)
                 return@launch
