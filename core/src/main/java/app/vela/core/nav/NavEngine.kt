@@ -1061,9 +1061,17 @@ object NavEngine {
             val dx = bx - ax
             val dy = by - ay
             val len2 = dx * dx + dy * dy
-            val t = if (len2 == 0.0) 0.0 else (-(ax * dx + ay * dy) / len2).coerceIn(0.0, 1.0)
+            // The window must constrain the projected point, not just which segments are
+            // visited. A long segment can overlap the window while its closest point is
+            // BEHIND loM. That returned past progress and could assign a later stop to an
+            // earlier pass on an out-and-back trip.
+            val segmentM = cum[i + 1] - cum[i]
+            val tMin = if (segmentM > 0.0) ((loM - cum[i]) / segmentM).coerceIn(0.0, 1.0) else 0.0
+            val tMax = if (segmentM > 0.0) ((hiM - cum[i]) / segmentM).coerceIn(0.0, 1.0) else 1.0
+            if (tMin > tMax) continue
+            val t = (if (len2 == 0.0) 0.0 else -(ax * dx + ay * dy) / len2).coerceIn(tMin, tMax)
             val d = hypot(ax + t * dx, ay + t * dy)
-            val along = cum[i] + t * (cum[i + 1] - cum[i])
+            val along = cum[i] + t * segmentM
             // With an anchor, a pass farther along has to be that much nearer to win (2 cm per
             // meter, the re-acquire's own rule): the window alone reaches 600 m ahead, and a
             // route that goes round a roundabout and comes BACK down the road it arrived on
