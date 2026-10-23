@@ -25,6 +25,14 @@ class CourseQualityTest {
         assertEquals(90f, CourseQuality.measured(90f, 12f, 40f, 10f)!!, 0.001f)
     }
 
+    @Test fun courseAtBearingAccuracyBoundaryIsAccepted() {
+        assertEquals(45f, CourseQuality.measured(45f, 10f, 5f, 45f)!!, 0.001f)
+    }
+
+    @Test fun courseJustOutsideBearingAccuracyBoundaryIsRejected() {
+        assertNull(CourseQuality.measured(45f, 10f, 5f, 45.1f))
+    }
+
     @Test fun wrapsNegativeBearings() {
         assertEquals(350f, CourseQuality.measured(-10f, 15f, 4f, null)!!, 0.001f)
     }
