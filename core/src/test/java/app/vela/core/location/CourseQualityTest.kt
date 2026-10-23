@@ -33,6 +33,11 @@ class CourseQualityTest {
         assertNull(CourseQuality.measured(45f, 10f, 5f, 45.1f))
     }
 
+    @Test fun absentSpeedOrBearingDoesNotInventAHeading() {
+        assertNull(CourseQuality.measured(90f, null, 5f, 5f))
+        assertNull(CourseQuality.measured(null, 10f, 5f, 5f))
+    }
+
     @Test fun wrapsNegativeBearings() {
         assertEquals(350f, CourseQuality.measured(-10f, 15f, 4f, null)!!, 0.001f)
     }
