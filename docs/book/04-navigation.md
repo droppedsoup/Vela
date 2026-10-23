@@ -51,6 +51,8 @@ what you see.
 
 ### The per-fix loop
 
+Route progress projection clamps the nearest point to the current along-route window, including when a single long road segment crosses the window boundary. This prevents an earlier point on that segment from being chosen for a later stop or navigation fix. Windowed projection still prefers the closest plausible point and preserves the existing repeated-road anchor penalty.
+
 `NavSession.onLocation` runs for every fix. `NavEngine.update` projects the fix onto the route,
 counts it toward off route, picks any prompt that is due, and advances the step or arrives. The
 session then publishes the new state, speaks and buzzes, starts a reroute if one was asked for,
