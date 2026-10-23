@@ -194,6 +194,7 @@ jobs:
           ./gradlew :app:assembleRelease --no-daemon
           -PappVersionName=${{ steps.ver.outputs.name }}
           -PappVersionCode=${{ steps.ver.outputs.code }}
+          -PappId=${{ github.event_name == 'pull_request' && 'app.vela.dev' || 'app.vela' }}
           -PmaptilerKey=${{ secrets.MAPTILER_KEY }}
           ${{ vars.ABI_SPLITS == 'true' && '-PabiSplits' || '' }}
 
