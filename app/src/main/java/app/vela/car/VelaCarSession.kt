@@ -74,8 +74,22 @@ class VelaCarSession(private val deps: CarDeps) : Session(), DefaultLifecycleObs
                 val gps = loc.provider == android.location.LocationManager.GPS_PROVIDER ||
                     loc.provider == app.vela.core.location.SIM_PROVIDER
                 if (gps && (!loc.hasAccuracy() || loc.accuracy <= 50f)) {
-                    val speed = if (loc.hasSpeed()) loc.speed.toDouble() else null
-                    deps.navSession.onLocation(LatLng(loc.latitude, loc.longitude), app.vela.ui.Units.imperial.value, speed)
+                    val speed = loc.speed.takeIf { loc.hasSpeed() }
+                    val accuracy = loc.accuracy.takeIf { loc.hasAccuracy() }
+                    val course = app.vela.core.location.CourseQuality.measured(
+                        bearingDeg = loc.bearing.takeIf { loc.hasBearing() },
+                        speedMps = speed,
+                        horizontalAccuracyM = accuracy,
+                        bearingAccuracyDeg = loc.bearingAccuracyDegrees.takeIf { loc.hasBearingAccuracy() },
+                        movingFloorMps = 1f,
+                    )
+                    deps.navSession.onLocation(
+                        LatLng(loc.latitude, loc.longitude),
+                        app.vela.ui.Units.imperial.value,
+                        speed?.toDouble(),
+                        accuracyM = accuracy?.toDouble(),
+                        bearingDeg = course?.toDouble(),
+                    )
                 }
             }
         }

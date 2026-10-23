@@ -18,37 +18,33 @@ object RouteStops {
         val maneuvers = route.maneuvers
         if (poly.size < 2 || stops.isEmpty() || maneuvers.isEmpty()) return emptyList()
         val cum = RouteProjection.cumulative(poly)
-        val manAlong = maneuvers.map { project(poly, cum, it.location).first }
+        val total = cum.last()
+        // Follow the road forward for BOTH maneuvers and stops. A route that doubles back
+        // crosses the same coordinates twice; a global nearest-point search assigns the stop
+        // to its earlier pass and can make the next leg start before the previous stop.
+        var maneuverFromM = 0.0
+        val manAlong = maneuvers.mapIndexed { index, maneuver ->
+            // Keep the initial DEPART at the beginning if this route eventually returns to
+            // its origin. Only subsequent maneuvers should exclude the preceding position.
+            val windowStart = if (index == 0) 0.0 else maneuverFromM + 0.5
+            val (at, _) = NavEngine.projectAlong(poly, cum, maneuver.location, windowStart, total)
+            maneuverFromM = at.coerceAtLeast(maneuverFromM)
+            maneuverFromM
+        }
         val out = ArrayList<Pair<Int, String>>()
-        var from = 0
+        var fromIndex = 0
+        var fromM = 0.0
         for ((loc, label) in stops) {
-            val (along, off) = project(poly, cum, loc)
+            val (along, off) = NavEngine.projectAlong(poly, cum, loc, fromM + 0.5, total)
             if (off > tolM) continue
-            var i = from
+            fromM = along.coerceAtLeast(fromM)
+            var i = fromIndex
             while (i < maneuvers.size && manAlong[i] < along - slackM) i++
-            if (i <= 0 || i >= maneuvers.size - 1) continue // before the first turn, or the stop IS the arrival: nothing to divide
+            if (i <= 0 || i >= maneuvers.size - 1) continue
             out += i to label
-            from = i
+            fromIndex = i
         }
         return out
     }
 
-    /** Along-route meters and off-route meters of [p]'s nearest point on the polyline. */
-    private fun project(poly: List<LatLng>, cum: DoubleArray, p: LatLng): Pair<Double, Double> {
-        val latScale = Math.cos(Math.toRadians(p.lat)).coerceAtLeast(0.1)
-        var bestAlong = 0.0
-        var bestOff = Double.MAX_VALUE
-        for (i in 0 until poly.size - 1) {
-            val a = poly[i]; val b = poly[i + 1]
-            val ax = 0.0; val ay = 0.0
-            val bx = (b.lng - a.lng) * latScale * 111_320.0; val by = (b.lat - a.lat) * 111_320.0
-            val px = (p.lng - a.lng) * latScale * 111_320.0; val py = (p.lat - a.lat) * 111_320.0
-            val len2 = bx * bx + by * by
-            val t = if (len2 <= 0.0) 0.0 else (((px - ax) * bx + (py - ay) * by) / len2).coerceIn(0.0, 1.0)
-            val dx = px - bx * t; val dy = py - by * t
-            val off = Math.sqrt(dx * dx + dy * dy)
-            if (off < bestOff) { bestOff = off; bestAlong = cum[i] + Math.sqrt(len2) * t }
-        }
-        return bestAlong to bestOff
-    }
 }

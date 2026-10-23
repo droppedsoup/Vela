@@ -387,9 +387,23 @@ class CarMapRenderer(
                 if (nav != heldStill) { if (nav) app.vela.core.location.Stillness.hold(carContext) else app.vela.core.location.Stillness.release(); heldStill = nav }
                 // The same for a fix without a bearing: the direction from the last fix, once it
                 // has moved far enough for that to mean something.
+                val measuredCourse = app.vela.core.location.CourseQuality.measured(
+                    bearingDeg = loc.bearing.takeIf { loc.hasBearing() },
+                    speedMps = loc.speed.takeIf { loc.hasSpeed() },
+                    horizontalAccuracyM = loc.accuracy.takeIf { loc.hasAccuracy() },
+                    bearingAccuracyDeg = loc.bearingAccuracyDegrees.takeIf { loc.hasBearingAccuracy() },
+                    movingFloorMps = STOPPED_MPS.toFloat(),
+                )
+                // Deriving direction from two fixes also needs more displacement than the GPS
+                // uncertainty. Otherwise position jitter gives a plausible-looking wrong heading.
+                val derivedDistanceM = maxOf(
+                    FIX_COURSE_MIN_M,
+                    (if (loc.hasAccuracy()) loc.accuracy.toDouble() else 10.0) * 1.5,
+                )
                 val fixCourse: Double? = when {
-                    loc.hasBearing() -> loc.bearing.toDouble()
-                    prev != null && movedM >= FIX_COURSE_MIN_M -> prev.bearingTo(raw)
+                    measuredCourse != null -> measuredCourse.toDouble()
+                    prev != null && speedMps > STOPPED_MPS &&
+                        movedM >= derivedDistanceM && dtFix in 0.3..5.0 -> prev.bearingTo(raw)
                     else -> null
                 }
                 lastFix = raw; lastFixMs = nowMs
@@ -425,7 +439,7 @@ class CarMapRenderer(
                 //     flickered between adjacent points and swung the view even while driving).
                 //  3. Else hold the last heading, never chase noise. With no route the arrow
                 //     keeps its course through a stop, and a north-up view still turns it.
-                val trustCourse = courseOk && (!loc.hasBearingAccuracy() || loc.bearingAccuracyDegrees <= 45f)
+                val trustCourse = courseOk
                 if (trustCourse) { targetHeading = fixCourse!!; courseKnown = true }
                 else if (!courseKnown || speedMps > STOPPED_MPS) routeHeading(here)?.let { targetHeading = it; courseKnown = true }
                 if ((previewRoute != null || resultPins.isNotEmpty()) && !navigating()) { requestRender(); return@collect } // a preview or the results own the camera

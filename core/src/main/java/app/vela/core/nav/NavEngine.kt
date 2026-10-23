@@ -1022,7 +1022,12 @@ object NavEngine {
         for (k in maneuvers.indices) {
             // +0.5 nudge past the previous position: a segment ENDING exactly at fromM still
             // overlaps the window and its (earlier) projection would win the strict-less tie.
-            val (wm, wd) = projectAlong(route.polyline, cum, maneuvers[k].location, fromM + 0.5, total)
+            // The first maneuver is at the START of the route. On an out-and-back trip the
+            // same coordinate appears again at the end: nudging the first window past zero
+            // made the return endpoint win, then all later maneuvers collapsed onto it.
+            // Only later maneuvers need the half-meter forward nudge.
+            val windowStart = if (k == 0) 0.0 else fromM + 0.5
+            val (wm, wd) = projectAlong(route.polyline, cum, maneuvers[k].location, windowStart, total)
             manAlong[k] = (
                 if (wd <= ON_ROUTE_M) wm
                 else projectNearAnchor(route.polyline, cum, maneuvers[k].location, fromM).first
@@ -1061,9 +1066,17 @@ object NavEngine {
             val dx = bx - ax
             val dy = by - ay
             val len2 = dx * dx + dy * dy
-            val t = if (len2 == 0.0) 0.0 else (-(ax * dx + ay * dy) / len2).coerceIn(0.0, 1.0)
+            // The window must constrain the projected point, not just which segments are
+            // visited. A long segment can overlap the window while its closest point is
+            // BEHIND loM. That returned past progress and could assign a later stop to an
+            // earlier pass on an out-and-back trip.
+            val segmentM = cum[i + 1] - cum[i]
+            val tMin = if (segmentM > 0.0) ((loM - cum[i]) / segmentM).coerceIn(0.0, 1.0) else 0.0
+            val tMax = if (segmentM > 0.0) ((hiM - cum[i]) / segmentM).coerceIn(0.0, 1.0) else 1.0
+            if (tMin > tMax) continue
+            val t = (if (len2 == 0.0) 0.0 else -(ax * dx + ay * dy) / len2).coerceIn(tMin, tMax)
             val d = hypot(ax + t * dx, ay + t * dy)
-            val along = cum[i] + t * (cum[i + 1] - cum[i])
+            val along = cum[i] + t * segmentM
             // With an anchor, a pass farther along has to be that much nearer to win (2 cm per
             // meter, the re-acquire's own rule): the window alone reaches 600 m ahead, and a
             // route that goes round a roundabout and comes BACK down the road it arrived on

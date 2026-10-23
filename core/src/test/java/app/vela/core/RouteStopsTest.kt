@@ -31,6 +31,32 @@ class RouteStopsTest {
         assertEquals(listOf(1 to "A", 2 to "B"), RouteStops.legStarts(route, listOf(poly[2] to "A", poly[5] to "B")))
     }
 
+    @Test fun outAndBackStopsStartLegsOnTheirCorrectPass() {
+        // Return via a street already crossed outbound. The second stop must be assigned to
+        // its return pass, not the earlier visit to the same coordinates.
+        val line = listOf(
+            LatLng(38.55, -121.90),
+            LatLng(38.55, -121.70),
+            LatLng(38.55, -121.80),
+            LatLng(38.55, -121.88),
+        )
+        val steps = listOf(
+            Maneuver(ManeuverType.DEPART, "", line[0], 1000.0, 60.0),
+            Maneuver(ManeuverType.TURN_LEFT, "", line[1], 1000.0, 60.0),
+            Maneuver(ManeuverType.TURN_RIGHT, "", line[2], 1000.0, 60.0),
+            Maneuver(ManeuverType.ARRIVE, "", line[3], 0.0, 0.0),
+        )
+        val drive = Route(
+            polyline = line, distanceMeters = 0.0, durationSeconds = 600.0,
+            durationInTrafficSeconds = null,
+            legs = listOf(RouteLeg(0.0, 600.0, null, steps)),
+        )
+        assertEquals(
+            listOf(1 to "First", 2 to "Return"),
+            RouteStops.legStarts(drive, listOf(line[1] to "First", line[2] to "Return")),
+        )
+    }
+
     @Test fun farStopsAndStopsPastTheEndAreSkipped() {
         assertEquals(emptyList<Pair<Int, String>>(), RouteStops.legStarts(route, listOf(LatLng(38.60, -121.74) to "far")))
         assertEquals(emptyList<Pair<Int, String>>(), RouteStops.legStarts(route, listOf(poly[10] to "end")))

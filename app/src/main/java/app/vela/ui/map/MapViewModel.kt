@@ -1026,9 +1026,19 @@ class MapViewModel @Inject constructor(
                 // wandered 20 degrees on a straight approach to a light (issue #818).
                 val wide = accM > app.vela.core.location.Stillness.ACC_TRUST_M
                 val slow = app.vela.core.location.Stillness.SLOW_MPS.toFloat()
+                val measuredCourse = app.vela.core.location.CourseQuality.measured(
+                    bearingDeg = loc.bearing.takeIf { loc.hasBearing() },
+                    speedMps = loc.speed.takeIf { loc.hasSpeed() },
+                    horizontalAccuracyM = accM,
+                    bearingAccuracyDeg = loc.bearingAccuracyDegrees.takeIf { loc.hasBearingAccuracy() },
+                )
                 val fixBearing = when {
-                    loc.hasBearing() && loc.speed > 0.5f && (!wide || loc.speed >= slow) -> loc.bearing
-                    canDerive && movedM > 3.0 && (!wide || movedM / dt >= slow) -> bearingBetween(prev!!, here)
+                    measuredCourse != null -> measuredCourse
+                    // Two successive positions give a useful course only once the movement
+                    // exceeds their GPS uncertainty. A three-meter move on a five-meter fix
+                    // can point the arrow sideways for an entire street.
+                    canDerive && movedM > maxOf(8.0, accM.toDouble() * 1.5) &&
+                        (!wide || movedM / dt >= slow) -> bearingBetween(prev!!, here)
                     else -> null
                 }
                 val bearing = fixBearing ?: _state.value.myBearing
