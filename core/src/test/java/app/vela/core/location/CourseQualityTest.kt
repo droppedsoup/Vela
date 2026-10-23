@@ -6,7 +6,7 @@ import org.junit.Test
 
 class CourseQualityTest {
     @Test fun movingPreciseCourseIsAccepted() {
-        assertEquals(271f, CourseQuality.measured(271f, 14f, 5f, 7f), 0.001f)
+        assertEquals(271f, CourseQuality.measured(271f, 14f, 5f, 7f)!!, 0.001f)
     }
 
     @Test fun unreliableBearingIsRejectedEvenWhenPositionIsAccurate() {
@@ -22,10 +22,10 @@ class CourseQualityTest {
     }
 
     @Test fun wideFixAtDrivingSpeedMaySupplyAnAccurateBearing() {
-        assertEquals(90f, CourseQuality.measured(90f, 12f, 40f, 10f), 0.001f)
+        assertEquals(90f, CourseQuality.measured(90f, 12f, 40f, 10f)!!, 0.001f)
     }
 
     @Test fun wrapsNegativeBearings() {
-        assertEquals(350f, CourseQuality.measured(-10f, 15f, 4f, null), 0.001f)
+        assertEquals(350f, CourseQuality.measured(-10f, 15f, 4f, null)!!, 0.001f)
     }
 }
