@@ -165,11 +165,11 @@ Each fix changes a hit count:
 ### Rerouting
 
 ```
-REROUTE_FETCH_TIMEOUT_MS   = 20_000   // deadline of a lean attempt
+REROUTE_FETCH_TIMEOUT_MS   = 12_000   // deadline of a lean attempt
 REROUTE_LADDER_TIMEOUT_MS  = 40_000   // deadline of an escalated attempt
 REROUTE_ESCALATE_AFTER     = 2        // failed attempts before escalating
 REROUTE_FINISH_RESERVE_MS  = 4_000    // held back from the fetch for naming and adopting
-REROUTE_COOLDOWN_MS        = 10_000   // minimum gap after an adopted reroute
+REROUTE_COOLDOWN_MS        = 6_000   // minimum gap after an adopted reroute
 REROUTE_STUCK_GRACE_MS     = 5_000    // past deadline + this, a running attempt is dead
 REROUTE_SPEAK_MIN_MS       = 30_000   // "Rerouting" is spoken at most this often
 BACK_ON_COURSE_HITS        = 2        // on-route fixes that discard a reroute in flight
@@ -190,7 +190,10 @@ the deadline on a weak link. After two failures in a row the attempt uses the fu
 the longer deadline. The streak resets on any adopted route and on every new drive.
 
 An attempt asks for a route the way planning does ([chapter 5](05-routing.md)), with a budget
-and a heading added.
+and a heading added. An urgent attempt has 12 seconds to finish; after two failures the full
+40-second ladder remains available. A result computed from a stale origin is discarded when
+the latest GPS fix has advanced more than 150 m and the new route is over 70 m away at that
+position. The next off-route fix can initiate another attempt.
 
 The budget is the deadline minus the finish reserve. It travels into the fetch (`RouteBudget`),
 and each source gets a share:
@@ -216,8 +219,11 @@ The heading is the fix's course at the start point. Without it, a reroute comput
 meters down the wrong road often says to turn around. The open router and the on-phone router
 both take it. Google's request has no heading, so a Google route that starts against yours is
 set aside when the open router answered, unless going on would cost minutes more than turning
-around (book 5). A stopped car has no fresh course and sends none.
-Planning sends none.
+around (book 5). A stopped car has no fresh course and sends none. The course is checked against GPS speed,
+horizontal accuracy and bearing accuracy; on both phone and car, a wide slow fix does not
+supply a course. A course derived from movement must exceed the fix's noise radius. Android
+Auto supplies the same checked course and accuracy to the navigation engine for off-route
+detection. Planning sends none.
 
 The answer is checked before it is driven (`NavSession.driveable`). It must end within
 `REACH_TOLERANCE_M = 500` of the destination. A provisional Google alternate is named first, and
