@@ -1034,7 +1034,11 @@ class MapViewModel @Inject constructor(
                 )
                 val fixBearing = when {
                     measuredCourse != null -> measuredCourse
-                    canDerive && movedM > 3.0 && (!wide || movedM / dt >= slow) -> bearingBetween(prev!!, here)
+                    // Two successive positions give a useful course only once the movement
+                    // exceeds their GPS uncertainty. A three-meter move on a five-meter fix
+                    // can point the arrow sideways for an entire street.
+                    canDerive && movedM > maxOf(8.0, accM.toDouble() * 1.5) &&
+                        (!wide || movedM / dt >= slow) -> bearingBetween(prev!!, here)
                     else -> null
                 }
                 val bearing = fixBearing ?: _state.value.myBearing
