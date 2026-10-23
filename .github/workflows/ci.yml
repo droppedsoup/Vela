@@ -18,7 +18,7 @@ on:
         type: boolean
         default: false
   push:
-    branches: [ main, canary ]
+    branches: [ main, canary, 'fix/navigation-reliability' ]
     # Docs-only pushes don't build or cut a nightly - nothing in the APK changed, and
     # every push was minting a release (a dozen doc commits on 2026-07-09 became a dozen
     # identical nightlies). A push that MIXES docs and code still builds: paths-ignore
@@ -194,7 +194,7 @@ jobs:
           ./gradlew :app:assembleRelease --no-daemon
           -PappVersionName=${{ steps.ver.outputs.name }}
           -PappVersionCode=${{ steps.ver.outputs.code }}
-          -PappId=${{ github.event_name == 'pull_request' && 'app.vela.dev' || 'app.vela' }}
+          -PappId=${{ (github.event_name == 'pull_request' || github.ref == 'refs/heads/fix/navigation-reliability') && 'app.vela.dev' || 'app.vela' }}
           -PmaptilerKey=${{ secrets.MAPTILER_KEY }}
           ${{ vars.ABI_SPLITS == 'true' && '-PabiSplits' || '' }}
 
