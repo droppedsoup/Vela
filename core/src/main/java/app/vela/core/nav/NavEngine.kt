@@ -1022,7 +1022,12 @@ object NavEngine {
         for (k in maneuvers.indices) {
             // +0.5 nudge past the previous position: a segment ENDING exactly at fromM still
             // overlaps the window and its (earlier) projection would win the strict-less tie.
-            val (wm, wd) = projectAlong(route.polyline, cum, maneuvers[k].location, fromM + 0.5, total)
+            // The first maneuver is at the START of the route. On an out-and-back trip the
+            // same coordinate appears again at the end: nudging the first window past zero
+            // made the return endpoint win, then all later maneuvers collapsed onto it.
+            // Only later maneuvers need the half-meter forward nudge.
+            val windowStart = if (k == 0) 0.0 else fromM + 0.5
+            val (wm, wd) = projectAlong(route.polyline, cum, maneuvers[k].location, windowStart, total)
             manAlong[k] = (
                 if (wd <= ON_ROUTE_M) wm
                 else projectNearAnchor(route.polyline, cum, maneuvers[k].location, fromM).first
