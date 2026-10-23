@@ -391,8 +391,12 @@ class NavSession @Inject constructor(
         _state.update { it.copy(nextStop = null) }
         voice.speak(app.vela.core.i18n.NavStringsRegistry.current().rerouting(), interrupt = true)
         note(reason)
+        // Stop edits invalidate every prior reroute or recheck. Canceling a coroutine alone
+        // cannot stop an underlying blocking directions fetch from completing later.
+        sessionGen += 1
         val gen = sessionGen
         rerouteJob?.cancel()
+        recheckJob?.cancel()
         // This replan is the in-flight job the reroute gate will judge: stamped like a reroute,
         // or an off-route fix during it reads the last reroute's start (0 on a drive with none),
         // calls it stuck and starts over.
@@ -1119,6 +1123,22 @@ class NavSession @Inject constructor(
                 pendingLatchClear.set(true)
                 return@launch
             }
+            // A directions fetch may succeed after the car has already taken another road.
+            // Reject a route based on an old origin if it does not pass anywhere near the
+            // newest fix, rather than adopting guidance behind the moving car.
+            val newest = lastLoc
+            if (newest != null && newest.distanceTo(loc) > 150.0 &&
+                app.vela.core.nav.RouteProjection.alongMeters(
+                    r.polyline,
+                    app.vela.core.nav.RouteProjection.cumulative(r.polyline),
+                    newest,
+                    70.0,
+                ) == null
+            ) {
+                note("reroute returned behind current position; retrying from a fresh fix")
+                pendingLatchClear.set(true)
+                return@launch
+            }
             // New route starts here → recompute the marks, reset the counter. Unlike the faster-route
             // OFFER we accept a route that couldn't include the stops (being guided beats staying
             // off-route), but we say so and KEEP the stops in the plan — their marks are null on this
@@ -1233,10 +1253,10 @@ class NavSession @Inject constructor(
         const val MIN_RECHECK_DISTANCE_M = 1_500.0 // don't bother near the destination
         const val FASTER_THRESHOLD_S = 90.0        // only offer if it saves real time
         const val FASTER_CHIME_LEAD_MS = 450L       // the faster-route chime, then the spoken offer
-        const val REROUTE_COOLDOWN_MS = 10_000L    // min gap between ADOPTED reroutes (no reroute storms)
+        const val REROUTE_COOLDOWN_MS = 6_000L    // min gap between ADOPTED reroutes (no reroute storms)
         // Deadline on one reroute FETCH: generous next to Google's 1-3 s but far under the retry
         // ladders' worst case; past it the position the request was computed from is stale anyway.
-        const val REROUTE_FETCH_TIMEOUT_MS = 20_000L
+        const val REROUTE_FETCH_TIMEOUT_MS = 12_000L
         // Slack past the deadline before a still-running reroute job is declared wedged.
         const val REROUTE_STUCK_GRACE_MS = 5_000L
         // After this many reroute attempts in a row have come back with nothing, stop being lean
