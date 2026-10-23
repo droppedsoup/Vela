@@ -23,8 +23,11 @@ object RouteStops {
         // crosses the same coordinates twice; a global nearest-point search assigns the stop
         // to its earlier pass and can make the next leg start before the previous stop.
         var maneuverFromM = 0.0
-        val manAlong = maneuvers.map { maneuver ->
-            val (at, _) = NavEngine.projectAlong(poly, cum, maneuver.location, maneuverFromM + 0.5, total)
+        val manAlong = maneuvers.mapIndexed { index, maneuver ->
+            // Keep the initial DEPART at the beginning if this route eventually returns to
+            // its origin. Only subsequent maneuvers should exclude the preceding position.
+            val windowStart = if (index == 0) 0.0 else maneuverFromM + 0.5
+            val (at, _) = NavEngine.projectAlong(poly, cum, maneuver.location, windowStart, total)
             maneuverFromM = at.coerceAtLeast(maneuverFromM)
             maneuverFromM
         }
