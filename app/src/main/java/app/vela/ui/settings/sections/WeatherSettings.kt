@@ -78,7 +78,10 @@ internal fun WeatherEditor() {
     // Leaving the editor ends the simulation unless it is on the map.
     DisposableEffect(Unit) { onDispose { if (!WeatherFx.simulateOnMap.value) WeatherFx.simulated.value = null } }
 
-    val dark = isMapDark()
+    // The preview starts in the map's own look and can be flipped, since the effects are drawn
+    // differently over the dark map.
+    val mapDark = isMapDark()
+    var dark by remember(mapDark) { mutableStateOf(mapDark) }
     Box(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).height(220.dp).clip(RoundedCornerShape(16.dp)),
     ) {
@@ -86,6 +89,20 @@ internal fun WeatherEditor() {
         WeatherOverlay(dark = dark, screenWindDeg = { (windFrom + 180f) % 360f }, weather = WeatherFx.simulated.value)
     }
 
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        for ((isDark, label) in listOf(false to R.string.settings_weather_light_map, true to R.string.settings_weather_dark_map)) {
+            FilterChip(
+                selected = dark == isDark,
+                onClick = { dark = isDark },
+                label = { Text(stringResource(label)) },
+                shape = CircleShape,
+                modifier = Modifier.dpadHighlight(CircleShape),
+            )
+        }
+    }
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),

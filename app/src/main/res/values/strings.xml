@@ -131,6 +131,8 @@
     <string name="settings_weather_haze_strength">Haze strength</string>
     <string name="settings_weather_haze_height">Haze height</string>
     <string name="settings_weather_reset">Reset %1$s</string>
+    <string name="settings_weather_light_map">Light map</string>
+    <string name="settings_weather_dark_map">Dark map</string>
     <string name="settings_weather_rain">Rain</string>
     <string name="settings_weather_snow">Snow</string>
     <string name="settings_weather_sleet">Sleet</string>

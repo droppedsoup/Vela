@@ -4065,17 +4065,29 @@ A version query on `BAKED_URL` moves the map cache off old tiles after a rebake.
 
 - `WeatherFx` (pref `weather_fx`, on) asks MET Norway's `locationforecast/2.0/compact` for the
   position rounded to one decimal (`MetNoWeather.url`), with `VELA_UA` (its terms ask for an
-  identifying agent and at most four decimals), when the map opens, when the rounded cell
-  changes, and every 20 minutes. Nothing is asked with the setting off.
-- `MetNoWeather.parse` reads the first time step: `next_1_hours.summary.symbol_code` (else
-  `next_6_hours`) for the kind (`thunder` storm, `sleet`, `snow`, `rain`, `fog`, else clear) and
-  intensity (`light` 0.4, `heavy` 1.0, else 0.7), and `instant` for the wind (m/s to km/h).
-  Wind draws by itself from `WINDY_KMH` (29 km/h).
+  identifying agent, at most four decimals, and no request before the answer expires): when the
+  map opens, when the rounded cell changes (about every 11 km, so every few minutes on a drive),
+  and when the answer's `Expires` passes, held between 10 and 60 minutes. Nothing is asked with
+  the setting off.
+- `MetNoWeather.parseSeries` keeps every time step: `next_1_hours.summary.symbol_code` (else
+  `next_6_hours`, else `next_12_hours`) for the kind (`thunder` storm, `sleet`, `snow`, `rain`,
+  `fog`, else clear) and intensity (`light` 0.4, `heavy` 1.0, else 0.7), and `instant` for the
+  wind (m/s to km/h). Every minute `MetNoWeather.at` picks the step that has begun, so rain the
+  forecast ends at four ends on the map at four with no request; a forecast whose last step is
+  over 3 hours old draws nothing. Wind draws by itself from `WINDY_KMH` (29 km/h).
 - `WeatherOverlay` draws over the map, under the puck and every control: up to 110 rain streaks
   slanted by the wind, 80 snowflakes swaying as they fall (sleet takes half of each), 9 faint
   wind streaks crossing in the wind's direction on screen (its bearing less the camera's) when
-  nothing falls, a haze down from the top in fog, and a soft white flash every 8 to 17 s in a
-  storm. Counts scale with intensity; light maps get darker inks. Particles have fixed traits and
+  nothing falls, and in fog a haze down from the top and six soft banks drifting across. A storm
+  strikes every 5 to 21 s (sooner when heavier): a jagged bolt with a branch (`Bolt.make`) drawn
+  as a wide glow, a narrower glow and a white core, and the sky lit around where it comes down,
+  both on a flash, dip, flash, fade envelope over 650 ms (`strikeEnvelope`). Counts scale with
+  intensity.
+- Each map look has its own inks (`Inks`): on the dark map pale rain, white snow, a blue-gray
+  mist and a pale blue glow with a strong sky flash; on the light map darker rain, blue-gray
+  flakes with a white center, a gray mist (white vanishes on the near-white land) and a deep
+  blue glow. Rendered side by side in a browser port of the same drawing: on the light map the
+  white mist and pale glow of the first version did not show. Particles have fixed traits and
   one clock read in the draw phase, advanced at about 30 frames a second and only while something
   moves, so a frame redraws without recomposing.
 - Each effect has five dials (`WeatherFx.Tune`: amount, strength, size, speed, and an extra that
@@ -4084,7 +4096,7 @@ A version query on `BAKED_URL` moves the map cache off old tiles after a rebake.
   when nothing falls. Sleet has its own. Amount tops out at twice the default count (220 rain,
   160 snow, 18 wind streaks).
 - Settings > Map > Customize weather effects (`WeatherEditor`) previews one effect live over a
-  stand-in map in the map's light or dark look, with chips for rain, snow, sleet, storm, fog and
+  stand-in map in the map's light or dark look (chips flip it), with chips for rain, snow, sleet, storm, fog and
   wind, sliders for the simulated intensity, wind speed and wind direction, and that effect's
   dials, which the map uses at once. A Reset puts the effect's dials back. "Show the simulation
   on the map" (`simulateOnMap`, not kept across launches) draws the simulated weather on the map

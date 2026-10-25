@@ -15,6 +15,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.scale
 import app.vela.core.VelaConfig
 import app.vela.core.data.weather.MetNoWeather
 import app.vela.core.data.weather.WeatherNow
@@ -33,8 +34,11 @@ import kotlin.math.sin
 /**
  * Weather effects over the map (SPEC 6, Weather effects): faint rain, snow, sleet, storm, fog
  * or wind drawn over the map for the weather where the map is, from MET Norway
- * ([MetNoWeather]). Asked when the position (to one decimal) changes and every [REFRESH_MS];
- * nothing is asked or drawn with the setting off (pref `weather_fx`, on). Each effect's look is
+ * ([MetNoWeather]). The whole hourly forecast is kept and the hour that applies is picked every
+ * [PICK_MS], so rain that stops at four stops on the map at four with no request; the forecast is
+ * asked again when the position (to one decimal, about 11 km) changes, which a drive does every
+ * few minutes, and when the answer expires (its `Expires` header, at least [MIN_REFRESH_MS] and
+ * at most [MAX_REFRESH_MS] on). Nothing is asked or drawn with the setting off (pref `weather_fx`, on). Each effect's look is
  * tuned in Settings > Map ([tune], [Tune]), and [simulated] draws a chosen weather instead of
  * the real one, in the settings preview and, with [simulateOnMap], on the map. Started in `VelaApp`.
  */
@@ -80,7 +84,9 @@ object WeatherFx {
 
     fun resetTune(context: Context, kind: WeatherNow.Kind) = setTune(context, kind, Tune())
 
-    private const val REFRESH_MS = 20 * 60_000L
+    private const val PICK_MS = 60_000L
+    private const val MIN_REFRESH_MS = 10 * 60_000L
+    private const val MAX_REFRESH_MS = 60 * 60_000L
     private const val KEY = "weather_fx"
     private fun key(kind: WeatherNow.Kind, dial: String) = "weather_fx_${kind.name.lowercase()}_$dial"
 
@@ -108,24 +114,39 @@ object WeatherFx {
 
     private fun prefs(c: Context) = c.getSharedPreferences("vela_settings", Context.MODE_PRIVATE)
 
-    private suspend fun fetch(lat: Double, lng: Double): WeatherNow? = withContext(Dispatchers.IO) {
+    /** The forecast for a cell and how long it may be kept (ms), or null. */
+    private suspend fun fetch(lat: Double, lng: Double): Pair<List<MetNoWeather.Step>, Long>? = withContext(Dispatchers.IO) {
         runCatching {
             http.newCall(Request.Builder().url(MetNoWeather.url(lat, lng)).header("User-Agent", VelaConfig.VELA_UA).build())
-                .execute().use { r -> if (r.isSuccessful) r.body?.string()?.let(MetNoWeather::parse) else null }
+                .execute().use { r ->
+                    if (!r.isSuccessful) return@use null
+                    val steps = r.body?.string()?.let(MetNoWeather::parseSeries).orEmpty()
+                    if (steps.isEmpty()) return@use null
+                    val keep = r.headers.getDate("Expires")?.time?.let { it - System.currentTimeMillis() } ?: MIN_REFRESH_MS
+                    steps to keep.coerceIn(MIN_REFRESH_MS, MAX_REFRESH_MS)
+                }
         }.getOrNull()
     }
 
-    /** Keeps [now] current for [at] while composed and the setting is on. */
+    /** Keeps [now] current for [at] while composed and the setting is on: the forecast for the
+     *  position's cell, the hour of it that applies, checked every [PICK_MS]. */
     @Composable
     fun Keeper(at: LatLng?) {
         val cell = at?.let { Math.round(it.lat * 10) to Math.round(it.lng * 10) }
         val enabled = on.value
         LaunchedEffect(cell, enabled) {
             if (!enabled || cell == null) return@LaunchedEffect
+            var series = emptyList<MetNoWeather.Step>()
+            var refreshAt = 0L
             while (isActive) {
-                val w = fetch(cell.first / 10.0, cell.second / 10.0)
-                if (w != null) now.value = w
-                delay(REFRESH_MS)
+                if (SystemClock.elapsedRealtime() >= refreshAt) {
+                    val got = fetch(cell.first / 10.0, cell.second / 10.0)
+                    if (got != null) { series = got.first; refreshAt = SystemClock.elapsedRealtime() + got.second }
+                    else refreshAt = SystemClock.elapsedRealtime() + MIN_REFRESH_MS
+                }
+                val w = MetNoWeather.at(series, System.currentTimeMillis())
+                if (w != now.value && (w != null || series.isNotEmpty())) now.value = w
+                delay(PICK_MS)
             }
         }
     }
@@ -144,13 +165,72 @@ private class Particles(n: Int, seed: Int) {
 private const val RAIN_MAX = 220
 private const val SNOW_MAX = 160
 private const val GUST_MAX = 18
+private const val FOG_BANKS = 6
+
+/** How a lightning strike's light runs over time (ms since it began): a flash, a dip, a second
+ *  flash, then a fade, the flicker that makes a strike read as lightning. */
+private fun strikeEnvelope(ms: Long): Float = when {
+    ms < 0 -> 0f
+    ms < 70 -> 1f
+    ms < 130 -> 0.25f
+    ms < 210 -> 0.85f
+    ms < 650 -> 0.85f * (1f - (ms - 210) / 440f)
+    else -> 0f
+}
+
+/** One lightning bolt, in screen shares: a jagged trunk from above the top edge down into the
+ *  upper half, and a branch off it. Made fresh for each strike. */
+private class Bolt(val trunk: FloatArray, val branch: FloatArray, val startMs: Long) {
+    companion object {
+        fun make(r: java.util.Random, now: Long): Bolt {
+            val x0 = 0.15f + r.nextFloat() * 0.7f
+            val end = 0.42f + r.nextFloat() * 0.25f
+            val n = 11 + r.nextInt(4)
+            val trunk = FloatArray((n + 1) * 2)
+            var x = x0
+            for (i in 0..n) {
+                trunk[2 * i] = x; trunk[2 * i + 1] = -0.02f + end * i / n
+                x += (r.nextFloat() - 0.5f) * 0.09f
+            }
+            val from = 3 + r.nextInt(maxOf(1, n - 6))
+            val m = 4 + r.nextInt(3)
+            val side = if (r.nextBoolean()) 1f else -1f
+            val branch = FloatArray((m + 1) * 2)
+            var bx = trunk[2 * from]; var by = trunk[2 * from + 1]
+            for (i in 0..m) {
+                branch[2 * i] = bx; branch[2 * i + 1] = by
+                bx += side * (0.02f + r.nextFloat() * 0.04f); by += 0.025f + r.nextFloat() * 0.02f
+            }
+            return Bolt(trunk, branch, now)
+        }
+    }
+}
+
+/** The colors one map look takes: light inks on the dark map, darker ones on the light map, a
+ *  blue-gray mist instead of white fog at night, a stronger flash in the dark. */
+private class Inks(dark: Boolean) {
+    val rain = if (dark) Color(0xFFA9C8F0) else Color(0xFF4E6E91)
+    val rainAlpha = if (dark) 0.30f else 0.32f
+    val snow = if (dark) Color.White else Color(0xFF7F97B2)
+    val snowCore = if (dark) null else Color.White
+    val wind = if (dark) Color(0xFFCFE0FF) else Color(0xFF607890)
+    // White mist vanishes on the near-white light map: a gray one reads as fog there.
+    val fog = if (dark) Color(0xFFA3B4C8) else Color(0xFFB4BEC9)
+    val fogAlpha = if (dark) 0.32f else 0.50f
+    // A pale glow washes out on the light map; a deep blue one carries the bolt there.
+    val boltGlow = if (dark) Color(0xFF8FB8FF) else Color(0xFF4C6EF5)
+    val boltCore = Color.White
+    val sky = if (dark) Color(0xFFCFE0FF) else Color(0xFFDDE6FF)
+    val skyAlpha = if (dark) 0.38f else 0.35f
+}
 
 /**
  * The effect layer. Particle places are worked out from their fixed traits and one clock, read
  * only in the draw phase, so a frame redraws without recomposing; the clock advances at about
- * 30 frames a second and stops when nothing moves (clear skies, fog, the setting off).
- * [weather] is what to draw (the map passes [WeatherFx.shown], the settings preview the
- * simulated weather). [screenWindDeg] is where the wind blows toward on screen (0 up, 90 right).
+ * 30 frames a second and stops when nothing moves (clear skies with little wind, the setting
+ * off). [weather] is what to draw (the map passes [WeatherFx.shown], the settings preview the
+ * simulated weather), [dark] whether the map under it is dark. [screenWindDeg] is where the
+ * wind blows toward on screen (0 up, 90 right).
  */
 @Composable
 fun WeatherOverlay(
@@ -162,15 +242,16 @@ fun WeatherOverlay(
     val w = weather ?: return
     if (!WeatherFx.on.value) return
     val falls = w.kind != WeatherNow.Kind.CLEAR && w.kind != WeatherNow.Kind.FOG
-    val animate = falls || w.windy
+    val animate = falls || w.windy || w.kind == WeatherNow.Kind.FOG
     val clock = remember { mutableFloatStateOf(0f) }
-    val flash = remember { mutableFloatStateOf(0f) }
+    val bolt = remember { mutableStateOf<Bolt?>(null) }
     val tune = WeatherFx.tune(w.kind)
     val windTune = WeatherFx.tune(WeatherNow.Kind.CLEAR)
     LaunchedEffect(animate, w.kind) {
         if (!animate) return@LaunchedEffect
         var last = 0L
-        var nextFlash = SystemClock.uptimeMillis() + 3_000L
+        val r = java.util.Random()
+        var nextStrike = SystemClock.uptimeMillis() + 2_500L
         while (isActive) {
             val t = androidx.compose.runtime.withFrameNanos { it }
             if (t - last < 30_000_000L) continue // about 30 frames a second is plenty for a backdrop
@@ -178,17 +259,19 @@ fun WeatherOverlay(
             clock.floatValue = (t / 1e9).toFloat() % 10_000f
             if (w.kind == WeatherNow.Kind.STORM) {
                 val now = SystemClock.uptimeMillis()
-                if (now >= nextFlash) { flash.floatValue = 1f; nextFlash = now + 8_000L + (Math.random() * 9_000).toLong() }
-                else if (flash.floatValue > 0f) flash.floatValue = (flash.floatValue - 0.12f).coerceAtLeast(0f)
+                if (now >= nextStrike) {
+                    bolt.value = Bolt.make(r, now)
+                    // Heavier storms strike more often: 5 to 11 s apart at full intensity.
+                    nextStrike = now + ((7_000L + r.nextInt(9_000)) * (1.3f - 0.5f * w.intensity)).toLong()
+                }
             }
         }
     }
     val rain = remember { Particles(RAIN_MAX, 11) }
     val snow = remember { Particles(SNOW_MAX, 23) }
     val gusts = remember { Particles(GUST_MAX, 37) }
-    val rainInk = if (dark) Color(0xFFDDE7F5) else Color(0xFF5B7A99)
-    val snowInk = if (dark) Color.White else Color(0xFF8FA6BF)
-    val windInk = if (dark) Color.White else Color(0xFF6B7F94)
+    val banks = remember { Particles(FOG_BANKS, 53) }
+    val ink = remember(dark) { Inks(dark) }
     Canvas(modifier.fillMaxSize()) {
         val t = clock.floatValue
         val wd = screenWindDeg() * (PI / 180.0).toFloat()
@@ -200,17 +283,36 @@ fun WeatherOverlay(
         // Each effect's clock runs at its own speed dial; positions are shares of the screen,
         // worked in doubles, since the clock runs for hours.
         val td = t.toDouble() * tune.speed
+        if (w.kind == WeatherNow.Kind.FOG) {
+            // A haze from the top (the far distance in a tilted view) and banks drifting across.
+            val haze = (ink.fogAlpha * 0.6f * tune.opacity).coerceIn(0f, 1f)
+            drawRect(Brush.verticalGradient(listOf(ink.fog.copy(alpha = haze), Color.Transparent), endY = H * (0.55f * tune.extra).coerceIn(0.1f, 1f)))
+            for (i in 0 until FOG_BANKS) {
+                val drift = ((banks.x[i] + td * 0.012 * banks.speed[i]) % 1.6).toFloat() - 0.3f
+                val cx = drift * W
+                val cy = (0.12f + banks.y[i] * 0.8f) * H
+                val rx = (0.45f + 0.35f * banks.size[i]) * W
+                val ry = (0.10f + 0.08f * banks.size[i]) * H * tune.extra.coerceIn(0.3f, 2f)
+                val a = (ink.fogAlpha * (0.55f + 0.45f * banks.size[i]) * tune.opacity).coerceIn(0f, 1f)
+                scale(1f, ry / rx, pivot = Offset(cx, cy)) {
+                    drawCircle(
+                        Brush.radialGradient(listOf(ink.fog.copy(alpha = a), ink.fog.copy(alpha = a * 0.4f), Color.Transparent), center = Offset(cx, cy), radius = rx),
+                        radius = rx, center = Offset(cx, cy),
+                    )
+                }
+            }
+        }
         if (w.kind == WeatherNow.Kind.RAIN || w.kind == WeatherNow.Kind.STORM || w.kind == WeatherNow.Kind.SLEET) {
             val n = (RAIN_MAX / 2 * (0.35f + 0.65f * k) * tune.amount).toInt().coerceIn(0, RAIN_MAX)
                 .let { if (w.kind == WeatherNow.Kind.SLEET) it / 2 else it }
-            val alpha = ((if (dark) 0.20f + 0.10f * k else 0.28f + 0.12f * k) * tune.opacity).coerceIn(0f, 1f)
+            val alpha = ((ink.rainAlpha + 0.12f * k) * tune.opacity).coerceIn(0f, 1f)
             for (i in 0 until n) {
                 val fallN = 1.1 * rain.speed[i] * td
                 val y = (((rain.y[i] + fallN) % 1.1) * H).toFloat() - H * 0.05f
                 val len = (14f + 14f * rain.size[i]) * dp * (0.7f + 0.3f * k) * tune.size
                 val dx = windX * len * 0.6f
                 val x = ((((rain.x[i] + windX * fallN * 0.35 * H / W) % 1.0) + 1.0) % 1.0 * W).toFloat()
-                drawLine(rainInk.copy(alpha = alpha), Offset(x, y), Offset(x + dx, y + len), strokeWidth = 1.1f * dp * tune.size.coerceAtLeast(0.6f), cap = StrokeCap.Round)
+                drawLine(ink.rain.copy(alpha = alpha), Offset(x, y), Offset(x + dx, y + len), strokeWidth = 1.1f * dp * tune.size.coerceAtLeast(0.6f), cap = StrokeCap.Round)
             }
         }
         if (w.kind == WeatherNow.Kind.SNOW || w.kind == WeatherNow.Kind.SLEET) {
@@ -221,11 +323,11 @@ fun WeatherOverlay(
                 val y = (((snow.y[i] + fallN) % 1.05) * H).toFloat() - H * 0.02f
                 val sway = sin(t * 0.9f * tune.speed + snow.phase[i]) * 12f * dp
                 val x = (((((snow.x[i] + windX * fallN * 0.8 * H / W) % 1.0) + 1.0) % 1.0) * W).toFloat() + sway
-                drawCircle(
-                    snowInk.copy(alpha = ((0.55f + 0.25f * snow.size[i]) * tune.opacity).coerceIn(0f, 1f)),
-                    radius = (1.2f + 2.0f * snow.size[i]) * dp * tune.size,
-                    center = Offset(x, y),
-                )
+                val r = (1.2f + 2.0f * snow.size[i]) * dp * tune.size
+                val a = ((0.55f + 0.25f * snow.size[i]) * tune.opacity).coerceIn(0f, 1f)
+                drawCircle(ink.snow.copy(alpha = a), radius = r, center = Offset(x, y))
+                // On the light map a white center keeps a flake reading as snow, not a gray dot.
+                ink.snowCore?.let { drawCircle(it.copy(alpha = a), radius = r * 0.55f, center = Offset(x, y)) }
             }
         }
         if (!falls && w.windy) {
@@ -243,17 +345,32 @@ fun WeatherOverlay(
                 val cy = gusts.y[i] * H + dirY * travel
                 val len = (60f + 80f * gusts.size[i]) * dp * windTune.size
                 drawLine(
-                    windInk.copy(alpha = (0.16f * fade * strength * windTune.opacity).coerceIn(0f, 1f)),
+                    ink.wind.copy(alpha = (0.20f * fade * strength * windTune.opacity).coerceIn(0f, 1f)),
                     Offset(cx - dirX * len / 2, cy - dirY * len / 2), Offset(cx + dirX * len / 2, cy + dirY * len / 2),
                     strokeWidth = 1.4f * dp, cap = StrokeCap.Round,
                 )
             }
         }
-        if (w.kind == WeatherNow.Kind.FOG) {
-            val a = ((if (dark) 0.10f else 0.22f) * tune.opacity).coerceIn(0f, 1f)
-            drawRect(Brush.verticalGradient(listOf(Color.White.copy(alpha = a), Color.Transparent), endY = H * (0.6f * tune.extra).coerceIn(0.1f, 1f)))
+        val b = bolt.value
+        if (b != null) {
+            val env = strikeEnvelope(SystemClock.uptimeMillis() - b.startMs) * tune.extra.coerceIn(0f, 3f)
+            if (env > 0f) {
+                // The sky lights up around where the bolt comes down, then the bolt itself.
+                val top = Offset(b.trunk[0] * W, H * 0.08f)
+                drawRect(Brush.radialGradient(listOf(ink.sky.copy(alpha = (ink.skyAlpha * env).coerceIn(0f, 1f)), Color.Transparent), center = top, radius = maxOf(W, H) * 0.9f))
+                fun path(pts: FloatArray): androidx.compose.ui.graphics.Path = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(pts[0] * W, pts[1] * H)
+                    var i = 2
+                    while (i < pts.size) { lineTo(pts[i] * W, pts[i + 1] * H); i += 2 }
+                }
+                val trunk = path(b.trunk); val branch = path(b.branch)
+                val e = env.coerceAtMost(1f)
+                for ((p, scaleW) in listOf(trunk to 1f, branch to 0.6f)) {
+                    drawPath(p, ink.boltGlow.copy(alpha = 0.30f * e), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 12f * dp * scaleW, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+                    drawPath(p, ink.boltGlow.copy(alpha = 0.65f * e), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.5f * dp * scaleW, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+                    drawPath(p, ink.boltCore.copy(alpha = e), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.8f * dp * scaleW, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+                }
+            }
         }
-        val f = flash.floatValue
-        if (f > 0f) drawRect(Color.White.copy(alpha = (0.10f * f * tune.extra).coerceIn(0f, 1f)))
     }
 }

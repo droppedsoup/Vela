@@ -26,7 +26,9 @@ What Vela Maps does today, one line per feature. How each one works is in [SPEC.
   red and leaves roads that flow freely uncolored. Zoomed in to streets, it is drawn as smooth
   lines on the roads themselves.
 - "Weather effects" draws faint rain, snow, sleet, fog, storm flashes or wind over the map for the
-  weather where you are, from MET Norway. On by default. "Customize weather effects" previews each
+  weather where you are, from MET Norway, following the forecast hour by hour and fetching it
+  again as you drive into a new area. Each effect has its own look on the light and dark map.
+  On by default. "Customize weather effects" previews each
   effect live and tunes its amount, strength, size, speed, flash and haze, and can show the
   simulation on the map.
 - "Highlight transit lines" draws subway, tram and train lines in their own colors. Lines for

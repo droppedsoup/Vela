@@ -48,7 +48,7 @@ logged-out browser's. They are not tied to an account.
 | **google.com** (hidden pages) | the features only a browser engine gets, listed under "The hidden pages" | your IP, the page's address (the place, or a transit trip's endpoints), the Google session cookie, and whatever Google's own page script collects |
 | **google.com / googleapis.com** (Street View) | opening Street View, walking between panoramas, going back in time | your IP, the place's coordinate or a panorama id, then image tile coordinates |
 | **google.com/maps/vt** (traffic layer) | "Live traffic overlay" on (Settings > Map, on by default) | your IP, the tile coordinates in view |
-| **MET Norway** (api.met.no weather) | "Weather effects" on (Settings > Map, on by default): when the map opens, when your position moves to another 0.1 degree cell, and every 20 minutes | your IP, and your position rounded to one decimal (about 11 km) |
+| **MET Norway** (api.met.no weather) | "Weather effects" on (Settings > Map, on by default): when the map opens, when your position moves to another 0.1 degree cell (about every 11 km), and when the last forecast expires (10 to 60 minutes) | your IP, and your position rounded to one decimal (about 11 km) |
 | **mt1.google.com** (satellite close-ups) | satellite view, zoomed in past where Esri has imagery | your IP, tile coordinates |
 | **maps.app.goo.gl** | opening a shared short Google Maps link | your IP and that link. No cookies |
 | **OpenFreeMap** | viewing the map | your IP, which map tiles you pan over |

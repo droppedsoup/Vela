@@ -39,19 +39,42 @@ object MetNoWeather {
         lat, lng,
     )
 
-    fun parse(body: String): WeatherNow? = runCatching {
+    /** The weather of the reply's first time step. */
+    fun parse(body: String): WeatherNow? = parseSeries(body).firstOrNull()?.weather
+
+    /** One time step of the forecast: from [atMs] (epoch ms), this weather. */
+    data class Step(val atMs: Long, val weather: WeatherNow)
+
+    /** Every time step of the reply, hourly near the start and coarser later, in order. A step
+     *  that does not read is skipped; an unreadable reply is empty. */
+    fun parseSeries(body: String): List<Step> = runCatching {
         val root = Json.parseToJsonElement(body).jsonObject
-        val first = root["properties"]!!.jsonObject["timeseries"]!!.jsonArray.first().jsonObject
-        val data = first["data"]!!.jsonObject
-        val details = data["instant"]!!.jsonObject["details"]!!.jsonObject
-        val symbol = (data["next_1_hours"] ?: data["next_6_hours"])
-            ?.let { (it as JsonObject)["summary"]?.jsonObject?.get("symbol_code")?.jsonPrimitive?.content }
-            .orEmpty()
-        val windMs = details["wind_speed"]?.jsonPrimitive?.doubleOrNull ?: 0.0
-        val windFrom = details["wind_from_direction"]?.jsonPrimitive?.doubleOrNull ?: 0.0
-        val (kind, intensity) = kindOf(symbol)
-        WeatherNow(kind, intensity, windMs * 3.6, windFrom)
-    }.getOrNull()
+        root["properties"]!!.jsonObject["timeseries"]!!.jsonArray.mapNotNull { e ->
+            runCatching {
+                val step = e.jsonObject
+                val at = java.time.Instant.parse(step["time"]!!.jsonPrimitive.content).toEpochMilli()
+                val data = step["data"]!!.jsonObject
+                val details = data["instant"]!!.jsonObject["details"]!!.jsonObject
+                val symbol = (data["next_1_hours"] ?: data["next_6_hours"] ?: data["next_12_hours"])
+                    ?.let { (it as JsonObject)["summary"]?.jsonObject?.get("symbol_code")?.jsonPrimitive?.content }
+                    .orEmpty()
+                val windMs = details["wind_speed"]?.jsonPrimitive?.doubleOrNull ?: 0.0
+                val windFrom = details["wind_from_direction"]?.jsonPrimitive?.doubleOrNull ?: 0.0
+                val (kind, intensity) = kindOf(symbol)
+                Step(at, WeatherNow(kind, intensity, windMs * 3.6, windFrom))
+            }.getOrNull()
+        }.sortedBy { it.atMs }
+    }.getOrDefault(emptyList())
+
+    /** The weather for [nowMs]: the last step that has begun, or the first when none has. Null
+     *  when the forecast ended more than [STALE_MS] ago, so an old answer is not drawn. */
+    fun at(series: List<Step>, nowMs: Long): WeatherNow? {
+        if (series.isEmpty()) return null
+        if (nowMs - series.last().atMs > STALE_MS) return null
+        return (series.lastOrNull { it.atMs <= nowMs } ?: series.first()).weather
+    }
+
+    const val STALE_MS = 3 * 60 * 60_000L
 
     /** A symbol code ("lightrain", "heavysnowshowers_night", "rainandthunder", "fog") as a kind
      *  and an intensity. */
