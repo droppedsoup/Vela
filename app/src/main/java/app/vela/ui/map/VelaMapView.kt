@@ -320,8 +320,10 @@ private const val OVL_GATE_MIN_GAP_MS = 1200L
 private const val B3D_TILT_ON = 20.0
 private const val B3D_TILT_OFF = 12.0
 private const val B3D_FADE_MS = 350L
-// A route bar scrub step glides over this long, so the camera follows the finger without jumps.
-private const val SCRUB_EASE_MS = 220
+// Route bar scrub (SPEC 4.7): the car's lead over its real place eases toward the finger's over
+// SCRUB_FOLLOW_S, and back to nothing over SCRUB_RETURN_S once the scrub ends.
+private const val SCRUB_FOLLOW_S = 0.12f
+private const val SCRUB_RETURN_S = 0.45f
 // The style light for extrusions. 0 draws every face in the palette color (no wall reads as a
 // wall); at 0.25 a roof stays within ~1% of the palette on the dark map and ~3% under it on the
 // light one, and walls facing away from the light draw up to 25% darker.
@@ -1342,21 +1344,6 @@ fun VelaMapView(
         }
     }
     var styleRef by remember { mutableStateOf<Style?>(null) }
-    // Scrubbing the route bar (SPEC 4.7): the camera rides the route to the arrow's point, facing
-    // along it. NavController has detached the follow, so nothing fights it; tilt and zoom stay.
-    LaunchedEffect(mapRef) {
-        val m = mapRef ?: return@LaunchedEffect
-        androidx.compose.runtime.snapshotFlow { app.vela.ui.nav.RouteScrub.fraction.value }.collect { f ->
-            if (f == null || !navModeHolder.value) return@collect
-            val (p, bearing) = app.vela.ui.nav.RouteScrub.target() ?: return@collect
-            m.easeCamera(
-                CameraUpdateFactory.newCameraPosition(
-                    CameraPosition.Builder(m.cameraPosition).target(MLLatLng(p.lat, p.lng)).bearing(bearing).build(),
-                ),
-                SCRUB_EASE_MS,
-            )
-        }
-    }
     // Slow traffic as lines on the roads at street zoom (SPEC 6, Rasters).
     TrafficLinesLayer.Effect(mapRef, styleRef, trafficOn && app.vela.ui.Traffic.shown(navMode))
     val navPuck = remember { NavPuck() }
@@ -3228,7 +3215,7 @@ fun VelaMapView(
             return true
         }
         while (true) {
-            if (idleFrames > 60 && navPuck.speed < 0.3) kotlinx.coroutines.delay(NAV_IDLE_TICK_MS)
+            if (idleFrames > 60 && navPuck.speed < 0.3 && navPuck.scrubM == 0.0 && !app.vela.ui.nav.RouteScrub.active) kotlinx.coroutines.delay(NAV_IDLE_TICK_MS)
             val now = withFrameNanos { it }
             // Two frame deltas: dtRaw (true wall-clock, for the PHYSICS — a janky 150 ms frame
             // must integrate 150 ms of travel, else the puck loses distance and lurches at each
@@ -3264,7 +3251,18 @@ fun VelaMapView(
             // fell behind the 3x world and caught up in jumps, worst through turns where the
             // camera's bearing ease has the most to do (the replay stutter, 2026-10-02).
             val dtEase = dtE.coerceAtMost(0.065f * ts.toFloat())
-            if (navPuck.engaged && routePolyline.size >= 2) {
+            // Route bar scrub (SPEC 4.7): the car is drawn this far ahead of its place along the
+            // route, and the follow camera goes with it. Eased both ways, so sliding the bar drives
+            // the car up the route and letting it reset drives it back.
+            val scrubTarget = if (navModeHolder.value) (app.vela.ui.nav.RouteScrub.fraction.value ?: 0f) * app.vela.ui.nav.RouteScrub.spanM else 0.0
+            if (scrubTarget != navPuck.scrubM) {
+                val tau = if (app.vela.ui.nav.RouteScrub.active) SCRUB_FOLLOW_S else SCRUB_RETURN_S
+                navPuck.scrubM += (scrubTarget - navPuck.scrubM) * (1f - kotlin.math.exp(-dtEase / tau))
+                if (kotlin.math.abs(scrubTarget - navPuck.scrubM) < 0.3) navPuck.scrubM = scrubTarget
+                idleFrames = 0
+            }
+            val scrubbing = navPuck.scrubM > 0.0 || app.vela.ui.nav.RouteScrub.active
+            if ((navPuck.engaged || scrubbing) && routePolyline.size >= 2) {
                 // Kalman-predict the speed each frame: fold the MEASURED forward acceleration
                 // into the modeled speed, so braking kills the prediction NOW — not at the next
                 // GPS fix. The old last-fix-speed × elapsed reckoning glided at full speed for up
@@ -3343,8 +3341,12 @@ fun VelaMapView(
                 val maxHoldBack = navPuck.speed * 0.25 + 0.5 // ...and of braking, so it never reverses
                 val corr = (err / PUCK_CORRECT_TIME_S).coerceIn(-maxHoldBack, maxCatchUp)
                 navPuck.progressM += ((navPuck.speed + corr) * dtT.coerceAtMost(0.5)).coerceAtLeast(0.0)
-                val puckM = puckAt?.let { app.vela.core.nav.RouteSmoothing.mapAlong(it, puckCum, navPuck.progressM) }
-                    ?: (navPuck.progressM * (if (routeCum.isNotEmpty() && routeCum.last() > 0.0 && puckCum.isNotEmpty()) puckCum.last() / routeCum.last() else 1.0))
+                // A car not yet on the route (parked at the start) is scrubbed from the engine's
+                // progress, so the preview starts on the road.
+                if (!navPuck.engaged) navPuck.progressM = app.vela.ui.nav.RouteScrub.traveledM
+                val showM = navPuck.progressM + navPuck.scrubM
+                val puckM = puckAt?.let { app.vela.core.nav.RouteSmoothing.mapAlong(it, puckCum, showM) }
+                    ?: (showM * (if (routeCum.isNotEmpty() && routeCum.last() > 0.0 && puckCum.isNotEmpty()) puckCum.last() / routeCum.last() else 1.0))
                 val (_, segBrg) = pointAtMeters(puckLine, puckCum, puckM)
                 // Lateral de-jitter: drawn straight off the polyline, the puck traced every
                 // lane-level micro-kink of the dense OSM geometry - side-to-side wiggle "like a
@@ -3370,7 +3372,7 @@ fun VelaMapView(
                 var sLng = 0.0
                 for (k in 0 until PUCK_SMOOTH_SAMPLES) {
                     val off = -win + 2.0 * win * k / (PUCK_SMOOTH_SAMPLES - 1)
-                    val (sp, _) = pointAtMeters(routePolyline, routeCum, navPuck.progressM + off)
+                    val (sp, _) = pointAtMeters(routePolyline, routeCum, showM + off)
                     sLat += sp.lat
                     sLng += sp.lng
                 }
@@ -9555,6 +9557,7 @@ private fun smoothBearing(cur: Float, target: Float, dt: Float, tau: Float): Flo
 private class NavPuck {
     var engaged = false           // currently following the route (snapped)
     var progressM = 0.0           // displayed meters along the route (what's drawn)
+    var scrubM = 0.0              // how far ahead of progressM the route bar scrub draws the car
     var targetM = 0.0             // latest fix's meters along the route (where we're heading)
     var targetAtMs = 0L           // elapsedRealtime() the target was set — for dead reckoning
     var speed = 0.0               // m/s — the KALMAN speed (GPS ⊕ accelerometer), see [kalman]

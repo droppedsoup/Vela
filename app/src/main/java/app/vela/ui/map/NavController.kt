@@ -180,8 +180,7 @@ internal class NavController(
                 // Speak an approach warning for a camera coming up (issue #229). Cheap per tick:
                 // a scan of a short list; the projection was done once when the route landed.
                 if (ns.navigating) { maybeWarnCamera(ns); maybeWarnFlock(ns); maybeWarnPolice(ns); maybeWarnSpeeding(); maybeWarnBridge(ns) }
-                // The route bar's scrub reads the drive's route and progress (RouteScrub).
-                app.vela.ui.nav.RouteScrub.route = if (ns.navigating) nsRoute else null
+                // The route bar's scrub starts a car not yet on the route from here (RouteScrub).
                 app.vela.ui.nav.RouteScrub.traveledM = ns.nav.traveledM
                 if (!ns.navigating) app.vela.ui.nav.RouteScrub.end()
                 _state.update {
@@ -269,14 +268,13 @@ internal class NavController(
                     refreshRouteFlock(r)
                 }
         }
-        // Scrubbing the route bar (RouteScrub): the follow camera steps aside while the arrow is up
-        // the bar, the camera goes back to the car when it ends, and it ends RESET_MS after the
-        // finger lets go.
+        // Scrubbing the route bar (RouteScrub): the map draws the car ahead along the route and
+        // the follow camera rides with it, so a scrub starts by attaching the follow (out of a
+        // pan, a step preview or the overview). It ends RESET_MS after the finger lets go.
         scope.launch {
             androidx.compose.runtime.snapshotFlow { app.vela.ui.nav.RouteScrub.fraction.value != null }
                 .collect { on ->
-                    if (on) _state.update { it.copy(navCameraDetached = true, previewStepIndex = null, inNavOverview = false) }
-                    else if (_state.value.navigating) recenterNav()
+                    if (on) _state.update { it.copy(navCameraDetached = false, previewStepIndex = null, inNavOverview = false) }
                 }
         }
         scope.launch {

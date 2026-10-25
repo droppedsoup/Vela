@@ -152,8 +152,8 @@ What Vela Maps does today, one line per feature. How each one works is in [SPEC.
 - Timed limits follow the clock, such as 100 by day and 130 at night on Dutch motorways. Online
   only for now.
 - "Road ahead bar" is a strip with the traffic, lights, stop signs, crossings and cameras still
-  ahead. Drag its arrow up the bar to fly the map along the road ahead; it goes back to the car
-  7 seconds after you let go, or when you tap the compass.
+  ahead. Drag its arrow up and down the bar to drive the car along the route ahead and back; it
+  returns to where you are 7 seconds after you let go, or when you tap the compass.
 - Arrows on the route through the turns ahead while you drive, the way Google draws them; off
   under Navigation.
 - "Current road name" goes above the bottom bar, under the arrow, inside the bar, or off. A

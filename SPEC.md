@@ -5394,14 +5394,16 @@ the catalog, the ones switched off included; a pick runs that search. The one-bu
   bitmaps (`trafficLightBitmap`, `stopSignBitmap`) on the track, `MINI` (16 dp) tall; cameras,
   crossings and humps are `BADGE` (26 dp) discs beside it with their glyphs (issue #828).
 - Route bar scrub (`RouteScrub`): a finger anywhere on the bar puts its arrow there and drags it,
-  and D-pad up and down step it a tenth of the bar (the bar is a focus stop). The arrow's place is
-  a fraction of the bar's span; the map eases (`SCRUB_EASE_MS`, 220 ms) to the point that far
-  along the route ahead (`traveledM` plus fraction times `spanM`), facing the route's heading
-  from there to 40 m on, keeping its tilt and zoom. While the arrow is up the bar NavController
-  marks the camera detached (the follow steps aside, Re-center shows) and clears a step preview
-  or the overview. It ends `RESET_MS` (7 s) after the finger lets go, on a compass tap (which
-  then does nothing else), on Re-center, and when the drive ends; the camera then glides back to
-  the car. Guidance, voice and the puck are untouched.
+  and D-pad up and down step it a tenth of the bar (the bar is a focus stop). The car is drawn
+  that fraction of the bar's span (`spanM`) ahead of its place along the route
+  (`NavPuck.scrubM`), and the follow camera rides with it in its drive framing, so sliding up
+  drives the car up the route and sliding down brings it back. The lead eases toward the finger
+  over `SCRUB_FOLLOW_S` (0.12 s) and back to nothing over `SCRUB_RETURN_S` (0.45 s). A car not
+  yet on the route (parked at the start) is scrubbed from the engine's progress. A scrub attaches
+  the follow (out of a pan, a step preview or the overview) and the parked frame slowdown waits
+  while it runs. It ends `RESET_MS` (7 s) after the finger lets go, on a compass tap (which then
+  does nothing else), on Re-center, and when the drive ends; the car then drives back. Guidance,
+  voice and the real position are untouched.
 - Search along the route is a page (`NavSearchChips`): the whole screen in portrait, the left
   column over a dimmed map in landscape, where a tap on the dimmed part closes it. It has a
   search field, `QuickCategories.forDrive()` as tiles three to a row with fuel and charging
