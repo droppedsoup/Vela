@@ -113,6 +113,8 @@
     <string name="settings_map">Map</string>
     <string name="settings_live_traffic">Live traffic overlay</string>
     <string name="settings_live_traffic_hint">Marks slow and stopped traffic in yellow and red while browsing. Navigation already colors your route by traffic.</string>
+    <string name="settings_weather_fx">Weather effects</string>
+    <string name="settings_weather_fx_hint">Faint rain, snow, fog or wind over the map for the weather where you are. The weather comes from MET Norway, asked with your position rounded to about 11 km.</string>
     <string name="settings_traffic_in_drive">Traffic overlay while driving</string>
     <string name="settings_traffic_in_drive_hint">Keeps the slow traffic marks on the roads around your route during a drive. Off, only your route line shows traffic.</string>
     <string name="settings_transit_layer">Highlight transit lines</string>

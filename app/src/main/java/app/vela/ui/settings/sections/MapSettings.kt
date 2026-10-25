@@ -43,6 +43,13 @@ internal fun MapSettingsScreen(onBack: () -> Unit, homeSet: Boolean = false) {
         }
         GroupDivider()
         ToggleRow(
+            label = stringResource(R.string.settings_weather_fx),
+            checked = app.vela.ui.map.WeatherFx.on.value,
+            onCheckedChange = { app.vela.ui.map.WeatherFx.set(context, it) },
+            hint = stringResource(R.string.settings_weather_fx_hint),
+        )
+        GroupDivider()
+        ToggleRow(
             label = stringResource(R.string.settings_transit_layer),
             checked = app.vela.ui.TransitLayer.on.value,
             onCheckedChange = { app.vela.ui.TransitLayer.set(context, it) },

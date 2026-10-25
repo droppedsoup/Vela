@@ -182,6 +182,7 @@ internal class NavController(
                 if (ns.navigating) { maybeWarnCamera(ns); maybeWarnFlock(ns); maybeWarnPolice(ns); maybeWarnSpeeding(); maybeWarnBridge(ns) }
                 // The route bar's scrub starts a car not yet on the route from here (RouteScrub).
                 app.vela.ui.nav.RouteScrub.traveledM = ns.nav.traveledM
+                if (app.vela.ui.nav.RouteScrub.remainingM.doubleValue != ns.nav.remainingDistance) app.vela.ui.nav.RouteScrub.remainingM.doubleValue = ns.nav.remainingDistance
                 if (!ns.navigating) app.vela.ui.nav.RouteScrub.end()
                 _state.update {
                     it.copy(

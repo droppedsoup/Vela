@@ -25,6 +25,8 @@ What Vela Maps does today, one line per feature. How each one works is in [SPEC.
   "Traffic overlay while driving" is on. The overlay marks slow and stopped traffic in yellow and
   red and leaves roads that flow freely uncolored. Zoomed in to streets, it is drawn as smooth
   lines on the roads themselves.
+- "Weather effects" draws faint rain, snow, sleet, fog, storm flashes or wind over the map for the
+  weather where you are, from MET Norway. On by default.
 - "Highlight transit lines" draws subway, tram and train lines in their own colors. Lines for
   places you have looked at are kept on the phone, so they show at once and with no signal.
 - Traffic lights, stop signs, railway crossings and speed humps show at close zoom.

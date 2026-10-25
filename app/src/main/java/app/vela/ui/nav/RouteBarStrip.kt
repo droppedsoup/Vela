@@ -53,13 +53,15 @@ fun RouteBarStrip(model: RouteBar.Model, modifier: Modifier = Modifier) {
     val chip = MaterialTheme.colorScheme.surface
     val ink = MaterialTheme.colorScheme.onSurface
     val lightImage = androidx.compose.runtime.remember { app.vela.ui.map.trafficLightBitmap().asImageBitmap() }
-    // Scrubbing (RouteScrub): the arrow rides up the bar with the finger and the map follows.
-    RouteScrub.spanM = model.spanM
+    // Scrubbing (RouteScrub): the arrow rides up the bar with the finger and the car follows. The
+    // bar is the whole trip then, so its label is the distance to the destination.
     val scrubAt = (RouteScrub.fraction.value ?: 0f).toDouble()
+    val scrubbing = RouteScrub.active
     val stopImage = androidx.compose.runtime.remember { app.vela.ui.map.stopSignBitmap().asImageBitmap() }
     Column(modifier.width(STRIP_W.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
-            if (model.reachesDestination) "" else formatDistance(model.spanM),
+            if (scrubbing) formatDistance(RouteScrub.remainingM.doubleValue)
+            else if (model.reachesDestination) "" else formatDistance(model.spanM),
             style = MaterialTheme.typography.labelSmall,
             color = ink.copy(alpha = 0.8f),
             maxLines = 1,

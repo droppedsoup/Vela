@@ -136,6 +136,7 @@ class VelaApp : Application(), coil.ImageLoaderFactory {
         AppLocale.init(this) // resolve the app language (system default) → drives the nav-text locale
         Traffic.init(this)
         app.vela.data.PoliceReports.init(this) // police reports and their alert settings (SPEC 4.9)
+        app.vela.ui.map.WeatherFx.init(this) // weather effects over the map (SPEC 6)
         TransitLayer.init(this)
         app.vela.ui.SatelliteLayer.init(this) // persisted satellite-imagery toggle
         app.vela.ui.LayersButton.init(this) // persisted show/hide of the map layers button

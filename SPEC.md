@@ -66,6 +66,7 @@ GrapheneOS and other ROMs with no GMS. License GPLv3. Distribution is F-Droid an
 | Traffic and live ETA | Google directions | Yes | No |
 | Walking, cycling | Walk: OSRM foot; Google's walk only when 15% shorter (`WALK_GOOGLE_SHORTER`). Bike: safety-weighted by default, on-phone profile, else Valhalla | Walk: to compare. Bike: not by default | Downloaded region |
 | Traffic layer; satellite past z19 | Google raster tiles. Traffic on by default (`Traffic`, `traffic_on`), satellite off | Yes | No |
+| Weather effects | MET Norway locationforecast, the position to one decimal | No | No |
 | Traffic controls (lights, stops, crossings, humps) | Per-region road-features bake, Overpass only where no region exists | No | Yes |
 | Surveillance and speed cameras | Bundled and hosted DeFlock dataset; OSM speed cameras | No | Yes |
 | Fuel prices on gas stations | US: Google's search reply. UK: the government's Fuel Finder, trimmed and hosted on the `fuel-gb` release (5.8) | US: in the search. UK: no | UK: the last file downloaded |
@@ -866,8 +867,10 @@ arrow stays flat. Measured on a Pixel 4a demo drive: 60 fps, 0.17% janky frames.
 
 The nav Overview button is a toggle. With `inNavOverview` set (by Overview; cleared by
 Re-center, a pan and the end of the drive) a press re-centers instead of fitting again. The fit
-keeps the chrome clear: in portrait the turn card, the bar, the route bar strip and the button
-column; in landscape the whole left column plus 28 dp, with 12% top and bottom.
+keeps the chrome clear: in portrait 84 dp at the left (the route bar strip, 52 dp at 8 dp from
+the edge, and a margin past it), 116 dp at the right (the button column), 32% at the top (the
+turn card) and 25% at the bottom (the bar); at 40 dp on the left a destination to the west sat
+under the strip. In landscape the whole left column plus 28 dp, with 12% top and bottom.
 
 ### 3.8 Recalibration procedure
 
@@ -4056,6 +4059,24 @@ A version query on `BAKED_URL` moves the map cache off old tiles after a rebake.
   to z18), a white body (5 to 14 px) and a white arrowhead image rotated to the end bearing,
   from z14. Empty outside a drive.
 
+#### Weather effects
+
+- `WeatherFx` (pref `weather_fx`, on) asks MET Norway's `locationforecast/2.0/compact` for the
+  position rounded to one decimal (`MetNoWeather.url`), with `VELA_UA` (its terms ask for an
+  identifying agent and at most four decimals), when the map opens, when the rounded cell
+  changes, and every 20 minutes. Nothing is asked with the setting off.
+- `MetNoWeather.parse` reads the first time step: `next_1_hours.summary.symbol_code` (else
+  `next_6_hours`) for the kind (`thunder` storm, `sleet`, `snow`, `rain`, `fog`, else clear) and
+  intensity (`light` 0.4, `heavy` 1.0, else 0.7), and `instant` for the wind (m/s to km/h).
+  Wind draws by itself from `WINDY_KMH` (29 km/h).
+- `WeatherOverlay` draws over the map, under the puck and every control: up to 110 rain streaks
+  slanted by the wind, 80 snowflakes swaying as they fall (sleet takes half of each), 9 faint
+  wind streaks crossing in the wind's direction on screen (its bearing less the camera's) when
+  nothing falls, a haze down from the top in fog, and a soft white flash every 8 to 17 s in a
+  storm. Counts scale with intensity; light maps get darker inks. Particles have fixed traits and
+  one clock read in the draw phase, advanced at about 30 frames a second and only while something
+  moves, so a frame redraws without recomposing.
+
 #### Rasters
 
 - The traffic raster (`vela-traffic`, opacity 0.6) sits above `building-3d`, else `building`, else
@@ -5394,9 +5415,10 @@ the catalog, the ones switched off included; a pick runs that search. The one-bu
   bitmaps (`trafficLightBitmap`, `stopSignBitmap`) on the track, `MINI` (16 dp) tall; cameras,
   crossings and humps are `BADGE` (26 dp) discs beside it with their glyphs (issue #828).
 - Route bar scrub (`RouteScrub`): a finger anywhere on the bar puts its arrow there and drags it,
-  and D-pad up and down step it a tenth of the bar (the bar is a focus stop). The car is drawn
-  that fraction of the bar's span (`spanM`) ahead of its place along the route
-  (`NavPuck.scrubM`), and the follow camera rides with it in its drive framing, so sliding up
+  and D-pad up and down step it a tenth of the bar (the bar is a focus stop). While scrubbed the
+  bar stands for the whole trip: the bottom is the car, the top the destination, and its label
+  reads the distance left (`remainingM`). The car is drawn that share of the rest of the route
+  ahead of its place (`NavPuck.scrubM`), and the follow camera rides with it in its drive framing, so sliding up
   drives the car up the route and sliding down brings it back. The lead eases toward the finger
   over `SCRUB_FOLLOW_S` (0.12 s) and back to nothing over `SCRUB_RETURN_S` (0.45 s). A car not
   yet on the route (parked at the start) is scrubbed from the engine's progress. A scrub attaches

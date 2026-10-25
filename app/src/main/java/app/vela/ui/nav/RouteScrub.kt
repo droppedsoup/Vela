@@ -7,8 +7,10 @@ import androidx.compose.runtime.mutableStateOf
 /**
  * Scrubbing the road ahead (SPEC 4.7, Route bar scrub): during a drive the driver drags the
  * arrow up the route bar and the car drives up the route to that point, the follow camera with
- * it, and back down as the arrow comes down. The bar sets [fraction]; `VelaMapView` draws the car
- * [fraction] times [spanM] ahead of its place; `NavController` keeps [traveledM] current and ends
+ * it, and back down as the arrow comes down. While scrubbed the bar stands for the whole trip:
+ * the bottom is the car, the top the destination, and its label reads [remainingM]. The bar sets
+ * [fraction]; `VelaMapView` draws the car that share of the rest of the route ahead of its place;
+ * `NavController` keeps [traveledM] and [remainingM] current and ends
  * the scrub [RESET_MS] after the finger lets go; the compass and Re-center end it too, and the
  * car then drives back to where it is.
  */
@@ -21,9 +23,9 @@ object RouteScrub {
     /** When the finger last let go (elapsed ms); 0 while it is down or nothing is scrubbed. */
     val releasedAt = mutableLongStateOf(0L)
 
-    /** The drive's progress, kept by NavController; the bar's span, kept by the bar. */
+    /** The drive's progress and the road left to the destination, kept by NavController. */
     @Volatile var traveledM: Double = 0.0
-    @Volatile var spanM: Double = 0.0
+    val remainingM = androidx.compose.runtime.mutableDoubleStateOf(0.0)
 
     val active: Boolean get() = fraction.value != null
 

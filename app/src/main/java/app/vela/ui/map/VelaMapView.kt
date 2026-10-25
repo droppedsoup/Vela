@@ -2961,7 +2961,8 @@ fun VelaMapView(
             val pad = if (leftCol > 0) intArrayOf(
                 leftCol + (28 * padDens).toInt(), (map.height * 0.12).toInt(), (104 * padDens).toInt(), (map.height * 0.12).toInt(),
             ) else intArrayOf(
-                (40 * padDens).toInt(), (map.height * 0.30).toInt(), (104 * padDens).toInt(), (map.height * 0.22).toInt(),
+                // Left: the route bar strip (52 dp at 8 dp from the edge) and a margin past it.
+                (84 * padDens).toInt(), (map.height * 0.32).toInt(), (116 * padDens).toInt(), (map.height * 0.25).toInt(),
             )
             if (animMs <= 0) {
                 // A fresh overview CUTS to the fit (no flight across zoom levels) under the veil.
@@ -3254,7 +3255,10 @@ fun VelaMapView(
             // Route bar scrub (SPEC 4.7): the car is drawn this far ahead of its place along the
             // route, and the follow camera goes with it. Eased both ways, so sliding the bar drives
             // the car up the route and letting it reset drives it back.
-            val scrubTarget = if (navModeHolder.value) (app.vela.ui.nav.RouteScrub.fraction.value ?: 0f) * app.vela.ui.nav.RouteScrub.spanM else 0.0
+            // The bar stands for the whole trip while scrubbed: its top is the destination.
+            val scrubBase = if (navPuck.engaged) navPuck.progressM else app.vela.ui.nav.RouteScrub.traveledM
+            val scrubLeft = ((if (routeCum.isNotEmpty()) routeCum.last() else 0.0) - scrubBase).coerceAtLeast(0.0)
+            val scrubTarget = if (navModeHolder.value) (app.vela.ui.nav.RouteScrub.fraction.value ?: 0f) * scrubLeft else 0.0
             if (scrubTarget != navPuck.scrubM) {
                 val tau = if (app.vela.ui.nav.RouteScrub.active) SCRUB_FOLLOW_S else SCRUB_RETURN_S
                 navPuck.scrubM += (scrubTarget - navPuck.scrubM) * (1f - kotlin.math.exp(-dtEase / tau))
@@ -5737,6 +5741,17 @@ fun VelaMapView(
                 else -> if (classic) 0xFFF2F1EE else 0xFFF8F7F7
             }
             if (a > 0f) drawRect(androidx.compose.ui.graphics.Color(land), alpha = a)
+        },
+    )
+    // Weather effects (SPEC 6): over the map, under the puck and every control. The wind is
+    // turned into screen space with the camera's bearing, read in the draw phase.
+    WeatherFx.Keeper(myLocation)
+    WeatherOverlay(
+        dark = darkTheme,
+        screenWindDeg = {
+            val w = WeatherFx.now.value
+            val bearing = mapRef?.cameraPosition?.bearing ?: 0.0
+            if (w == null) 0f else (((w.windFromDeg + 180.0 - bearing) % 360.0 + 360.0) % 360.0).toFloat()
         },
     )
     val puckMesh = if (puckOverlayOn.value) remember(app.vela.ui.PuckStyle.key()) {

@@ -257,6 +257,8 @@ Small items, one pull request each.
 Each of these passed its unit tests and has not been seen or heard where it matters. Take one
 off the list when it has been.
 
+- Weather effects (SPEC 6). Parsing is unit tested and the reply checked live; the effects have
+  been seen on no phone, and their cost while raining is not measured.
 - Scrubbing the route bar (SPEC 4.7). Builds and passes the D-pad audit; the drag, the car's
   drive along the route and back, and the return after 7 s or a compass tap have not been seen on
   a phone.
