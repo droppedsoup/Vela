@@ -257,6 +257,9 @@ Small items, one pull request each.
 Each of these passed its unit tests and has not been seen or heard where it matters. Take one
 off the list when it has been.
 
+- Traffic as lines on the roads (SPEC 6, Rasters). Rendered from live tiles in a desk check; the
+  update pass, the crossfade from the raster and the cost of the pass on a phone have not been
+  seen on one.
 - Police reports (SPEC 4.9). Unit tests cover the rules and the app builds; the button's place
   over the drive's column, the badge, the card and the spoken line have not been seen on a phone.
   Check on a simulated drive: report, drive the same route again, hear the alert.

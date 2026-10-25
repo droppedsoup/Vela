@@ -25,26 +25,39 @@ object TrafficTileFilter : Interceptor {
         val resp = chain.proceed(req)
         if (!resp.isSuccessful || !isTrafficTile(req.url.toString())) return resp
         val bytes = runCatching { resp.body?.bytes() }.getOrNull() ?: return resp
-        val out = runCatching { dropGreen(bytes) }.getOrNull() ?: bytes
+        val out = runCatching { dropGreen(bytes, TrafficSampler.tileOf(req.url.toString())) }.getOrNull() ?: bytes
         return resp.newBuilder().body(out.toResponseBody("image/png".toMediaType())).build()
     }
 
-    /** The tile with its free-flow green made transparent, PNG encoded; null if it did not decode. */
-    private fun dropGreen(png: ByteArray): ByteArray? {
+    /** The tile with its free-flow green made transparent, PNG encoded; null if it did not decode.
+     *  With [tile] (z, x, y) the traffic levels are kept for [TrafficSampler] on the way. */
+    private fun dropGreen(png: ByteArray, tile: IntArray?): ByteArray? {
         val src = BitmapFactory.decodeByteArray(png, 0, png.size, BitmapFactory.Options().apply { inMutable = true }) ?: return null
         val bmp = if (src.config == Bitmap.Config.ARGB_8888) src else src.copy(Bitmap.Config.ARGB_8888, true).also { src.recycle() }
         val w = bmp.width
+        val h = bmp.height
         val row = IntArray(w)
-        for (y in 0 until bmp.height) {
+        // Levels on a GRID x GRID grid, each cell the highest level of the pixels it covers.
+        val grid = TrafficSampler.GRID
+        val levels = if (tile != null && w >= grid && h >= grid) ByteArray(grid * grid) else null
+        for (y in 0 until h) {
             bmp.getPixels(row, 0, w, 0, y, w, 1)
             var changed = false
+            val gy = y * grid / h
             for (i in 0 until w) {
                 val c = row[i]
                 if (c ushr 24 == 0) continue
-                if (isFreeFlow((c shr 16) and 0xff, (c shr 8) and 0xff, c and 0xff)) { row[i] = 0; changed = true }
+                val r = (c shr 16) and 0xff; val g = (c shr 8) and 0xff; val b = c and 0xff
+                if (isFreeFlow(r, g, b)) { row[i] = 0; changed = true; continue }
+                if (levels != null) {
+                    val l = app.vela.core.nav.TrafficLines.level(r, g, b, c ushr 24)
+                    val k = gy * grid + i * grid / w
+                    if (l > levels[k]) levels[k] = l.toByte()
+                }
             }
             if (changed) bmp.setPixels(row, 0, w, 0, y, w, 1)
         }
+        if (levels != null && tile != null) TrafficSampler.put(tile[0], tile[1], tile[2], levels)
         val buf = java.io.ByteArrayOutputStream(png.size * 2)
         bmp.compress(Bitmap.CompressFormat.PNG, 100, buf)
         bmp.recycle()

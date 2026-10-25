@@ -71,6 +71,7 @@ tasks.withType<Test>().configureEach {
     System.getProperty("velaLines")?.let { systemProperty("velaLines", it) }
     System.getProperty("velaNudge")?.let { systemProperty("velaNudge", it) }
     System.getProperty("velaFeedProbe")?.let { systemProperty("velaFeedProbe", it) }
+    System.getProperty("velaTrafficDesk")?.let { systemProperty("velaTrafficDesk", it) }
     // Painted-roads bake (PaintedRoadsBakeTest): a whole state's streets need a big heap.
     System.getProperty("velaPaintIn")?.let { systemProperty("velaPaintIn", it); maxHeapSize = "20g" }
     System.getProperty("velaPaintOut")?.let { systemProperty("velaPaintOut", it) }

@@ -276,6 +276,31 @@ object RoadNameTiles {
         return decoded.filterNotNull().flatten()
     }
 
+    /** Every car road in the z14 tiles covering the box, or null when there are more than
+     *  [maxTiles] of them or none could be read. Tiles that fail are left out: the traffic lines
+     *  (`TrafficLines`) draw what they can and ask again on the next pass. */
+    suspend fun roadsInBox(south: Double, west: Double, north: Double, east: Double, maxTiles: Int = 12): List<RoadLine>? {
+        testRoads?.let { return it }
+        if (fetch == null) return null
+        val x0 = tileX(west); val x1 = tileX(east); val y0 = tileY(north); val y1 = tileY(south)
+        if ((x1 - x0 + 1) * (y1 - y0 + 1) > maxTiles || x1 < x0 || y1 < y0) return null
+        val tiles = (x0..x1).flatMap { x -> (y0..y1).map { y -> x to y } }
+        val decoded = coroutineScope {
+            tiles.map { (x, y) ->
+                async {
+                    val key = (x.toLong() shl 32) or y.toLong()
+                    synchronized(roadCache) { roadCache[key] }?.let { return@async it }
+                    val bytes = bytes(x, y, true) ?: return@async null
+                    val roads = runCatching { decodeRoads(bytes, ZOOM, x, y) }.getOrNull() ?: return@async null
+                    synchronized(roadCache) { roadCache[key] = roads }
+                    roads
+                }
+            }.awaitAll()
+        }
+        if (decoded.all { it == null }) return null
+        return decoded.filterNotNull().flatten()
+    }
+
     /** The car roads of one tile's `transportation` layer, with their class and service kind. */
     fun decodeRoads(raw: ByteArray, z: Int, x: Int, y: Int): List<RoadLine> {
         val bytes = if (raw.size > 2 && raw[0] == 0x1f.toByte() && raw[1] == 0x8b.toByte())

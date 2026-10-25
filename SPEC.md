@@ -4071,6 +4071,22 @@ A version query on `BAKED_URL` moves the map cache off old tiles after a rebake.
   than 30 and is at least its blue. Yellow, red and dark red have more red than green and stay. On
   a z15 tile over a busy freeway the filter removed 16,479 pixels and kept 1,478, all yellow and
   red. A tile that does not decode passes through unchanged.
+- From z13.5 to z14.5 the raster fades to 0.004 (not 0: a layer at 0 is skipped and its tiles
+  stop loading) and lines on the roads fade in (`TrafficLinesLayer`, `vela-traffic-lines`). As each
+  tile arrives `TrafficTileFilter` keeps its levels on a 256 x 256 grid (`TrafficSampler`, the
+  newest 64 tiles, about 4 MB, cleared under memory pressure). Every 1.5 s, when the camera has
+  moved 120 m, the zoom changed by 0.6, new tiles arrived (at most every 3 s) or 30 s passed, the
+  car roads (motorway to minor) of the z14 OpenMapTiles tiles within 900 m of the camera (1,600 m
+  under z16) are read through `RoadNameTiles.roadsInBox`, and `TrafficLines.runs` walks each every
+  6 m, reads the level on the centerline and 3, 6 and 9 m to each side (Google draws each direction
+  off center) and keeps the highest. Gaps up to 13 m are bridged, stretches under 30 m join their
+  longer neighbor or go (a cross street reads the road it crosses), and each stretch is drawn on the
+  road's own line: `#F2B21B` slow, `#E5483C` heavy, `#9E1B1B` stopped, round caps, 2.5 px at z13.5
+  to 16 px at z20. Levels (`TrafficLines.level`): yellow `#ffcf43`, red `#eb1b1b`, dark red
+  `#a92727` and `#702222`. On one z14 tile of central Tokyo (755 roads) the pass took 83 ms on a
+  desktop JVM (`TrafficLinesDeskTest`, `-DvelaTrafficDesk=<folder>`). Incident icons (closures,
+  works) live only in the raster, so past z14.5 a closure reads as a red line without its sign.
+  The car map keeps the raster.
 - It carries a 900 ms `raster-fade-duration`. Google's tiles expire while the map is open, and
   at the default 300 ms a replaced tile reads as the whole layer flickering.
 - It is not drawn during a drive (`navMode`) unless "Traffic overlay while driving"

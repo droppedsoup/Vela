@@ -1340,6 +1340,8 @@ fun VelaMapView(
         }
     }
     var styleRef by remember { mutableStateOf<Style?>(null) }
+    // Slow traffic as lines on the roads at street zoom (SPEC 6, Rasters).
+    TrafficLinesLayer.Effect(mapRef, styleRef, trafficOn && app.vela.ui.Traffic.shown(navMode))
     val navPuck = remember { NavPuck() }
     val turnDeclutter = remember { TurnDeclutter() }
     // The cross-street bubbles this map hid because the camera left the car (ids, to put back).
@@ -7714,7 +7716,9 @@ private fun ensureTraffic(style: Style, on: Boolean) {
             // line), and Google's baked tiles paint free-flow green everywhere — at
             // full opacity that buries the basemap and reads as noise. ~0.6 keeps the
             // red/amber congestion legible while the green recedes.
-            PropertyFactory.rasterOpacity(0.6f),
+            // From z14.5 the lines on the roads take over (TrafficLinesLayer) and this stays
+            // loaded but nearly clear, feeding them its tiles.
+            PropertyFactory.rasterOpacity(TrafficLinesLayer.rasterOpacity(0.6f)),
             // Google's tiles expire while you drive, and a replaced tile used to pop: the old one
             // vanished and the new one appeared on the next frame, which reads as the whole
             // congestion layer flickering (user 2026-09-18). MapLibre cross-fades a tile over its
