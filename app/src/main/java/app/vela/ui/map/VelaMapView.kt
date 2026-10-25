@@ -5755,7 +5755,7 @@ fun VelaMapView(
     WeatherOverlay(
         dark = darkTheme,
         screenWindDeg = {
-            val w = WeatherFx.now.value
+            val w = WeatherFx.shown
             val bearing = mapRef?.cameraPosition?.bearing ?: 0.0
             if (w == null) 0f else (((w.windFromDeg + 180.0 - bearing) % 360.0 + 360.0) % 360.0).toFloat()
         },

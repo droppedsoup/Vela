@@ -4078,6 +4078,17 @@ A version query on `BAKED_URL` moves the map cache off old tiles after a rebake.
   storm. Counts scale with intensity; light maps get darker inks. Particles have fixed traits and
   one clock read in the draw phase, advanced at about 30 frames a second and only while something
   moves, so a frame redraws without recomposing.
+- Each effect has five dials (`WeatherFx.Tune`: amount, strength, size, speed, and an extra that
+  is the storm's flash and the fog's height), multipliers on the look above, kept per effect as
+  `weather_fx_<kind>_<dial>` in `vela_settings`; wind's are kept under `CLEAR`, since it draws
+  when nothing falls. Sleet has its own. Amount tops out at twice the default count (220 rain,
+  160 snow, 18 wind streaks).
+- Settings > Map > Customize weather effects (`WeatherEditor`) previews one effect live over a
+  stand-in map in the map's light or dark look, with chips for rain, snow, sleet, storm, fog and
+  wind, sliders for the simulated intensity, wind speed and wind direction, and that effect's
+  dials, which the map uses at once. A Reset puts the effect's dials back. "Show the simulation
+  on the map" (`simulateOnMap`, not kept across launches) draws the simulated weather on the map
+  in place of the real one (`WeatherFx.shown`).
 
 #### Rasters
 
