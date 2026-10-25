@@ -326,6 +326,10 @@ private const val B3D_FADE_MS = 350L
 // this often.
 private const val WEATHER_VIEW_M = 20_000.0
 private const val WEATHER_LOOK_MS = 300L
+// How far around the car the radar is read while driving, and the widest view (half its shorter
+// side) that still gets weather: past it the view is a region or a country.
+private const val WEATHER_CAR_M = 2_500.0
+private const val WEATHER_WIDEST_M = 150_000.0
 private const val SCRUB_FOLLOW_S = 0.12f
 private const val SCRUB_RETURN_S = 0.45f
 // The style light for extrusions. 0 draws every face in the palette color (no wall reads as a
@@ -5760,21 +5764,29 @@ fun VelaMapView(
     // taken once it has held one 0.1-degree cell for two looks, so a flight there asks nothing
     // on the way; a drive always uses the car.
     val weatherMe = rememberUpdatedState(myLocation)
-    val weatherAt = remember { mutableStateOf<LatLng?>(null) }
+    val weatherAt = remember { mutableStateOf<WeatherFx.Place?>(null) }
     LaunchedEffect(mapRef) {
         val m = mapRef ?: return@LaunchedEffect
-        var held: Pair<Long, Long>? = null
+        val dm = context.resources.displayMetrics
+        var held: Any? = null
         while (true) {
             val me = weatherMe.value
-            val c = m.cameraPosition.target?.let { LatLng(it.latitude, it.longitude) }
-            val want = when {
-                navModeHolder.value || c == null -> me
-                me == null || c.distanceTo(me) > WEATHER_VIEW_M -> c
-                else -> me
+            val cam = m.cameraPosition
+            val c = cam.target?.let { LatLng(it.latitude, it.longitude) }
+            // How far the view reaches from its center: half the screen's shorter side, from the
+            // zoom (a tilted view's horizon would make its bounds far larger than what is seen).
+            val viewM = c?.let { m.projection.getMetersPerPixelAtLatitude(it.lat) * minOf(dm.widthPixels, dm.heightPixels) / dm.density / 2.0 } ?: 0.0
+            val want: WeatherFx.Place? = when {
+                navModeHolder.value || c == null -> me?.let { WeatherFx.Place(it, WEATHER_CAR_M) }
+                viewM > WEATHER_WIDEST_M -> null // a region or a country: no one weather fits it
+                me == null || c.distanceTo(me) > WEATHER_VIEW_M -> WeatherFx.Place(c, viewM)
+                else -> WeatherFx.Place(me, maxOf(WEATHER_CAR_M, viewM))
             }
-            val cell = want?.let { Math.round(it.lat * 10) to Math.round(it.lng * 10) }
-            if (want == me || cell == held) weatherAt.value = want
-            held = cell
+            // Taken once it holds for two looks (same cell and radar disc), so a flight or a zoom
+            // in progress asks nothing on the way; the car's own place is taken at once.
+            val key = want?.let { Triple(Math.round(it.at.lat * 10), Math.round(it.at.lng * 10), app.vela.core.data.weather.RainRadar.radiusPx(it.radiusM, it.at.lat)) }
+            if ((want != null && want.at == me) || key == held) weatherAt.value = want
+            held = key
             kotlinx.coroutines.delay(WEATHER_LOOK_MS)
         }
     }

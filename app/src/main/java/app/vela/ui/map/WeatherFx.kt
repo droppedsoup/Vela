@@ -177,6 +177,13 @@ object WeatherFx {
 
     private fun cellOf(p: LatLng) = Math.round(p.lat * 10) to Math.round(p.lng * 10)
 
+    /** A place to draw the weather of: [at], and how far around it the view reaches ([radiusM]),
+     *  which is how much of the radar is read. */
+    data class Place(val at: LatLng, val radiusM: Double)
+
+    /** What a place is worked by: its forecast cell and the radar disc's size in pixels. */
+    private fun keyOf(p: Place) = Triple(Math.round(p.at.lat * 10), Math.round(p.at.lng * 10), RainRadar.radiusPx(p.radiusM, p.at.lat))
+
     /** The forecast for [cell], from the cache while it has not expired, else asked. */
     private suspend fun forecastFor(cell: Pair<Long, Long>): List<MetNoWeather.Step>? {
         val clock = SystemClock.elapsedRealtime()
@@ -188,7 +195,7 @@ object WeatherFx {
 
     /** The radar reading at [p]: the newest frame (its list checked at most every
      *  [RADAR_CHECK_MS]), its tile under [p] and that tile's coverage, each fetched once. */
-    private suspend fun radarAt(p: LatLng): RainRadar.Reading? {
+    private suspend fun radarAt(p: LatLng, radiusM: Double): RainRadar.Reading? {
         val clock = SystemClock.elapsedRealtime()
         if (frame == null || clock - frameCheckedAt >= RADAR_CHECK_MS) {
             frameCheckedAt = clock
@@ -203,7 +210,7 @@ object WeatherFx {
             val c = async { synchronized(coverageTiles) { coverageTiles[ck] } ?: tilePixels(RainRadar.coverageUrl(px[0], px[1]))?.also { synchronized(coverageTiles) { coverageTiles[ck] = it } } }
             t.await() to c.await()
         }
-        return tile?.let { RainRadar.read(it, cov, px[2], px[3], f.timeS) }
+        return tile?.let { RainRadar.read(it, cov, px[2], px[3], f.timeS, RainRadar.radiusPx(radiusM, p.lat)) }
     }
 
     /**
@@ -216,7 +223,7 @@ object WeatherFx {
      * (the radar tile is read again locally). [RainRadar.combine] puts them together.
      */
     @Composable
-    fun Keeper(at: LatLng?) {
+    fun Keeper(at: Place?) {
         val pos = androidx.compose.runtime.rememberUpdatedState(at)
         val enabled = on.value
         LaunchedEffect(enabled) {
@@ -231,16 +238,22 @@ object WeatherFx {
             }
             var lastCell: Pair<Long, Long>? = null
             while (isActive) {
-                val p = pos.value
-                if (p != null) {
+                val place = pos.value
+                if (place == null) {
+                    // No place: a view too wide for one weather (a region or a country).
+                    if (now.value != null) now.value = null
+                    radarFrameS.value = null
+                    lastCell = null
+                } else {
+                    val p = place.at
                     val cell = cellOf(p)
                     val (series, reading) = coroutineScope {
                         val fc = async { forecastFor(cell) }
-                        val rd = async { radarAt(p) }
+                        val rd = async { radarAt(p, place.radiusM) }
                         fc.await() to rd.await()
                     }
                     // Still the place asked for: a pan that moved on meanwhile is worked next pass.
-                    if (pos.value?.let(::cellOf) == cell || pos.value == null) {
+                    if (pos.value?.let(::keyOf) == keyOf(place)) {
                         val nowS = System.currentTimeMillis() / 1000
                         val w = RainRadar.combine(series?.let { MetNoWeather.at(it, System.currentTimeMillis()) }, reading, nowS)
                         radarFrameS.value = if (reading != null && reading.covered && nowS - reading.frameTimeS <= RainRadar.MAX_AGE_S) reading.frameTimeS else null
@@ -250,10 +263,11 @@ object WeatherFx {
                         lastCell = cell
                     }
                 }
-                // Sleep until the next tick or until the place changes cell, whichever is first.
-                val from = pos.value?.let(::cellOf)
+                // Sleep until the next tick or until the place changes (its cell, or a zoom that
+                // changes how much of the radar is read), whichever is first.
+                val from = pos.value?.let(::keyOf)
                 withTimeoutOrNull(TICK_MS) {
-                    androidx.compose.runtime.snapshotFlow { pos.value?.let(::cellOf) }.first { it != from }
+                    androidx.compose.runtime.snapshotFlow { pos.value?.let(::keyOf) }.first { it != from }
                 }
             }
         }

@@ -4065,9 +4065,17 @@ A version query on `BAKED_URL` moves the map cache off old tiles after a rebake.
 
 - The weather drawn is the car's, or the place the map looks at when that is over
   `WEATHER_VIEW_M` (20 km) from the car: a searched city, a destination, a pan across the
-  country, anywhere both sources reach. `VelaMapView` looks at the camera every
-  `WEATHER_LOOK_MS` (300 ms) and takes a view once it has held one 0.1-degree cell for two looks,
-  so a flight there asks nothing on the way; a drive always uses the car. A new place is worked at
+  country, anywhere both sources reach (`WeatherFx.Place`). `VelaMapView` looks at the camera
+  every `WEATHER_LOOK_MS` (300 ms) and takes a view once it has held one 0.1-degree cell and one
+  radar disc size for two looks, so a flight or a zoom in progress asks nothing on the way; a
+  drive always uses the car, read `WEATHER_CAR_M` (2.5 km) around it.
+- A view is read over its own area: half the screen's shorter side, from the zoom
+  (`getMetersPerPixelAtLatitude`, meters per dp; a tilted view's bounds reach the horizon), as a
+  disc of radar pixels (`RainRadar.radiusPx`, 2 to 40 px, about 40 km). It is wet when
+  `WET_SHARE` (8 percent) of the disc and at least 3 pixels show precipitation. Read at the
+  center alone, a city view zoomed in on a dry block showed nothing while it rained across town.
+  A view wider than `WEATHER_WIDEST_M` (150 km from its center) draws no weather: no one weather
+  fits a region or a country, and the last place's stayed drawn over the whole country. A new place is worked at
   once (`WeatherFx.Keeper` wakes on a new cell), forecast and radar asked together. Forecasts
   (24 cells, until each expires), radar tiles (4, by frame and tile) and coverage tiles (6) are
   kept across places, so going back to one, or to a place under the same radar tile, asks

@@ -31,6 +31,19 @@ class RainRadarTest {
         assertFalse(RainRadar.read(tile(argb("#cec08796")), null, 100, 100, 1000L).wet)
     }
 
+    @Test fun `a view reads its whole area, so rain across town counts`() {
+        // Dry at the center, a shower 10 px (about 10 km) off it covering a fifth of the view.
+        val t = tile(0)
+        for (y in 80..120) for (x in 108..118) t[y * RainRadar.TILE + x] = argb("#0077aaff")
+        assertFalse("the car's own spot is dry", RainRadar.read(t, null, 100, 100, 1000L).wet)
+        assertTrue("the view is wet", RainRadar.read(t, null, 100, 100, 1000L, radius = 20).wet)
+        // A few wet pixels in a wide view are not rain over it.
+        val speck = tile(0).also { for (x in 100..103) it[100 * RainRadar.TILE + x] = argb("#0077aaff") }
+        assertFalse(RainRadar.read(speck, null, 100, 100, 1000L, radius = 20).wet)
+        assertEquals(RainRadar.MAX_RADIUS_PX, RainRadar.radiusPx(500_000.0, 35.2))
+        assertTrue(RainRadar.radiusPx(10_000.0, 35.2) in 9..12)
+    }
+
     @Test fun `no radar there is not dry`() {
         val r = RainRadar.read(tile(0), tile(0xFF000000.toInt()), 10, 10, 1000L)
         assertFalse(r.covered)

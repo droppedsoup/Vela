@@ -81,20 +81,36 @@ object RainRadar {
 
     private fun sq(v: Int) = v * v
 
-    /** The reading at pixel ([px], [py]) of a [TILE]-wide tile: wet when [MIN_WET_PX] pixels in
-     *  [RADIUS_PX] around show precipitation, at their median reflectivity, snow when most do.
-     *  [coverage] is the coverage tile's pixels, null when unknown (counted as covered). */
-    fun read(pixels: IntArray, coverage: IntArray?, px: Int, py: Int, frameTimeS: Long): Reading {
+    /** Wet when at least this share of the pixels read show precipitation (and [MIN_WET_PX]). */
+    const val WET_SHARE = 0.08
+
+    /** Pixels to read around a place for a view [radiusM] across at [lat]: the view's own area,
+     *  from [RADIUS_PX] (the car) to [MAX_RADIUS_PX] (about 40 km). */
+    fun radiusPx(radiusM: Double, lat: Double): Int {
+        val mPerPx = 40_075_016.0 * kotlin.math.cos(Math.toRadians(lat)) / (TILE * (1 shl ZOOM))
+        return (radiusM / mPerPx).toInt().coerceIn(RADIUS_PX, MAX_RADIUS_PX)
+    }
+    const val MAX_RADIUS_PX = 40
+
+    /** The reading at pixel ([px], [py]) of a [TILE]-wide tile over a disc of [radius] pixels:
+     *  wet when [WET_SHARE] of its pixels (and at least [MIN_WET_PX]) show precipitation, at their
+     *  median reflectivity, snow when most do. [coverage] is the coverage tile's pixels, null
+     *  when unknown (counted as covered). Pixels past the tile's edge are not read. */
+    fun read(pixels: IntArray, coverage: IntArray?, px: Int, py: Int, frameTimeS: Long, radius: Int = RADIUS_PX): Reading {
         val covered = coverage == null || (coverage[py * TILE + px] ushr 24) < 0x80
         if (!covered) return Reading(false, false, 0, false, frameTimeS)
         val wet = ArrayList<Pair<Int, Boolean>>()
-        for (dy in -RADIUS_PX..RADIUS_PX) for (dx in -RADIUS_PX..RADIUS_PX) {
+        var seen = 0
+        val r2 = radius * radius
+        for (dy in -radius..radius) for (dx in -radius..radius) {
+            if (dx * dx + dy * dy > r2 && radius > RADIUS_PX) continue
             val x = px + dx; val y = py + dy
             if (x !in 0 until TILE || y !in 0 until TILE) continue
+            seen++
             val c = classify(pixels[y * TILE + x]) ?: continue
             if (c.first >= (if (c.second) SNOW_DBZ_MIN else RAIN_DBZ_MIN)) wet += c
         }
-        if (wet.size < MIN_WET_PX) return Reading(true, false, 0, false, frameTimeS)
+        if (wet.size < MIN_WET_PX || wet.size < seen * WET_SHARE) return Reading(true, false, 0, false, frameTimeS)
         val dbz = wet.map { it.first }.sorted()[wet.size / 2]
         val snow = wet.count { it.second } * 2 > wet.size
         return Reading(true, true, dbz, snow, frameTimeS)

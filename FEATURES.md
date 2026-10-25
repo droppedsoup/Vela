@@ -27,7 +27,8 @@ What Vela Maps does today, one line per feature. How each one works is in [SPEC.
   lines on the roads themselves.
 - "Weather effects" draws faint rain, snow, sleet, fog, storm flashes or wind over the map for the
   weather where you are, or for the place the map shows when it is over 20 km away, such as a
-  city you searched, anywhere in the world. What falls follows live rain radar (RainViewer, checked every couple of
+  city you searched, anywhere in the world, judged over the whole area on screen. Zoomed out to
+  a region or a country it shows none. What falls follows live rain radar (RainViewer, checked every couple of
   minutes and as you drive), so the rain stops on the map when it stops on the road; the kind of
   weather, fog and wind come from MET Norway's forecast. Settings shows which one it is using. Each effect has its own look on the light and dark map.
   On by default. "Customize weather effects" previews each
