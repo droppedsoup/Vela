@@ -4063,6 +4063,16 @@ A version query on `BAKED_URL` moves the map cache off old tiles after a rebake.
 
 #### Weather effects
 
+- The weather drawn is the car's, or the place the map looks at when that is over
+  `WEATHER_VIEW_M` (20 km) from the car: a searched city, a destination, a pan across the
+  country, anywhere both sources reach. `VelaMapView` looks at the camera every
+  `WEATHER_LOOK_MS` (300 ms) and takes a view once it has held one 0.1-degree cell for two looks,
+  so a flight there asks nothing on the way; a drive always uses the car. A new place is worked at
+  once (`WeatherFx.Keeper` wakes on a new cell), forecast and radar asked together. Forecasts
+  (24 cells, until each expires), radar tiles (4, by frame and tile) and coverage tiles (6) are
+  kept across places, so going back to one, or to a place under the same radar tile, asks
+  nothing new. A new place with nothing known draws nothing rather than the last place's weather.
+
 - `WeatherFx` (pref `weather_fx`, on) asks MET Norway's `locationforecast/2.0/compact` for the
   position rounded to one decimal (`MetNoWeather.url`), with `VELA_UA` (its terms ask for an
   identifying agent, at most four decimals, and no request before the answer expires): when the

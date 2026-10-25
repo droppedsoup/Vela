@@ -25,7 +25,11 @@ import app.vela.core.model.LatLng
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
@@ -135,7 +139,6 @@ object WeatherFx {
     val radarFrameS = mutableStateOf<Long?>(null)
 
     private const val RADAR_CHECK_MS = 2 * 60_000L
-    private const val RADAR_MOVE_M = 1_000.0
     private const val TICK_MS = 30_000L
 
     /** The newest radar frame, or null. */
@@ -158,13 +161,59 @@ object WeatherFx {
         }.getOrNull()
     }
 
+    /** Forecasts by 0.1-degree cell with when each expires (elapsed ms), radar tiles by frame and
+     *  tile, coverage tiles by tile: kept across places so going back to one is instant. Small
+     *  (a tile's pixels are 256 KB) and cleared under memory pressure. */
+    private val forecasts = lru<Pair<Long, Long>, Pair<List<MetNoWeather.Step>, Long>>(24)
+    private val radarTiles = lru<String, IntArray>(4)
+    private val coverageTiles = lru<Long, IntArray>(6)
+    @Volatile private var frame: RainRadar.Frame? = null
+    @Volatile private var frameCheckedAt = 0L
+    @Volatile private var pressureHooked = false
+
+    private fun <K, V> lru(max: Int) = object : LinkedHashMap<K, V>(16, 0.75f, true) {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<K, V>) = size > max
+    }
+
+    private fun cellOf(p: LatLng) = Math.round(p.lat * 10) to Math.round(p.lng * 10)
+
+    /** The forecast for [cell], from the cache while it has not expired, else asked. */
+    private suspend fun forecastFor(cell: Pair<Long, Long>): List<MetNoWeather.Step>? {
+        val clock = SystemClock.elapsedRealtime()
+        synchronized(forecasts) { forecasts[cell] }?.let { (series, until) -> if (clock < until) return series }
+        val got = fetch(cell.first / 10.0, cell.second / 10.0) ?: return synchronized(forecasts) { forecasts[cell] }?.first
+        synchronized(forecasts) { forecasts[cell] = got.first to (clock + got.second) }
+        return got.first
+    }
+
+    /** The radar reading at [p]: the newest frame (its list checked at most every
+     *  [RADAR_CHECK_MS]), its tile under [p] and that tile's coverage, each fetched once. */
+    private suspend fun radarAt(p: LatLng): RainRadar.Reading? {
+        val clock = SystemClock.elapsedRealtime()
+        if (frame == null || clock - frameCheckedAt >= RADAR_CHECK_MS) {
+            frameCheckedAt = clock
+            radarFrame()?.let { frame = it }
+        }
+        val f = frame ?: return null
+        val px = RainRadar.pixelOf(p.lat, p.lng)
+        val key = "${f.path}/${px[0]}/${px[1]}"
+        val ck = (px[0].toLong() shl 32) or px[1].toLong()
+        val (tile, cov) = coroutineScope {
+            val t = async { synchronized(radarTiles) { radarTiles[key] } ?: tilePixels(RainRadar.tileUrl(f, px[0], px[1]))?.also { synchronized(radarTiles) { radarTiles[key] = it } } }
+            val c = async { synchronized(coverageTiles) { coverageTiles[ck] } ?: tilePixels(RainRadar.coverageUrl(px[0], px[1]))?.also { synchronized(coverageTiles) { coverageTiles[ck] = it } } }
+            t.await() to c.await()
+        }
+        return tile?.let { RainRadar.read(it, cov, px[2], px[3], f.timeS) }
+    }
+
     /**
-     * Keeps [now] current for [at] while composed and the setting is on. Two sources, worked
-     * every [TICK_MS]: the hourly forecast for the position's cell (asked again on a new cell or
-     * when it expires) for the kind of weather, wind and fog, and the live radar for what is
-     * falling where the car is. The radar's frame list is checked every [RADAR_CHECK_MS]; its z7
-     * tile is fetched once per frame and tile (one tile is about 300 km across), and read again
-     * locally whenever the car has moved [RADAR_MOVE_M]. [RainRadar.combine] puts them together.
+     * Keeps [now] current for the place [at] while composed and the setting is on: where the car
+     * is, or the place the map is looking at when that is far from it (`VelaMapView` decides,
+     * SPEC 6). Two sources, asked together: the hourly forecast for the place's 0.1-degree cell
+     * for the kind of weather, wind and fog, and the live radar for what is falling there. A new
+     * place is worked at once; otherwise every [TICK_MS], which picks up a new radar frame (its
+     * list checked every [RADAR_CHECK_MS]), the forecast's next hour, and a drive's movement
+     * (the radar tile is read again locally). [RainRadar.combine] puts them together.
      */
     @Composable
     fun Keeper(at: LatLng?) {
@@ -172,48 +221,40 @@ object WeatherFx {
         val enabled = on.value
         LaunchedEffect(enabled) {
             if (!enabled) return@LaunchedEffect
-            var series = emptyList<MetNoWeather.Step>()
-            var seriesCell: Pair<Long, Long>? = null
-            var refreshAt = 0L
-            var frame: RainRadar.Frame? = null
-            var frameCheckedAt = 0L
-            var tileKey: String? = null
-            var tile: IntArray? = null
-            val coverage = HashMap<Long, IntArray?>()
-            var reading: RainRadar.Reading? = null
-            var readAt: LatLng? = null
-            var readFrame: String? = null
+            if (!pressureHooked) {
+                pressureHooked = true
+                app.vela.ui.MemoryPressure.register { level ->
+                    if (app.vela.ui.MemoryPressure.isSevere(level)) {
+                        synchronized(radarTiles) { radarTiles.clear() }; synchronized(coverageTiles) { coverageTiles.clear() }
+                    }
+                }
+            }
+            var lastCell: Pair<Long, Long>? = null
             while (isActive) {
                 val p = pos.value
                 if (p != null) {
-                    val clock = SystemClock.elapsedRealtime()
-                    val cell = Math.round(p.lat * 10) to Math.round(p.lng * 10)
-                    if (cell != seriesCell || clock >= refreshAt) {
-                        val got = fetch(cell.first / 10.0, cell.second / 10.0)
-                        if (got != null) { series = got.first; seriesCell = cell; refreshAt = clock + got.second }
-                        else refreshAt = clock + MIN_REFRESH_MS
+                    val cell = cellOf(p)
+                    val (series, reading) = coroutineScope {
+                        val fc = async { forecastFor(cell) }
+                        val rd = async { radarAt(p) }
+                        fc.await() to rd.await()
                     }
-                    if (frame == null || clock - frameCheckedAt >= RADAR_CHECK_MS) {
-                        radarFrame()?.let { frame = it }
-                        frameCheckedAt = clock
+                    // Still the place asked for: a pan that moved on meanwhile is worked next pass.
+                    if (pos.value?.let(::cellOf) == cell || pos.value == null) {
+                        val nowS = System.currentTimeMillis() / 1000
+                        val w = RainRadar.combine(series?.let { MetNoWeather.at(it, System.currentTimeMillis()) }, reading, nowS)
+                        radarFrameS.value = if (reading != null && reading.covered && nowS - reading.frameTimeS <= RainRadar.MAX_AGE_S) reading.frameTimeS else null
+                        // A new place with nothing known clears the old place's weather rather than
+                        // showing it there.
+                        if (w != null || cell != lastCell) now.value = w
+                        lastCell = cell
                     }
-                    val f = frame
-                    val moved = readAt?.let { it.distanceTo(p) >= RADAR_MOVE_M } ?: true
-                    if (f != null && (moved || readFrame != f.path)) {
-                        val px = RainRadar.pixelOf(p.lat, p.lng)
-                        val key = "${f.path}/${px[0]}/${px[1]}"
-                        if (key != tileKey) { tile = tilePixels(RainRadar.tileUrl(f, px[0], px[1])); tileKey = key }
-                        val ck = (px[0].toLong() shl 32) or px[1].toLong()
-                        if (!coverage.containsKey(ck)) coverage[ck] = tilePixels(RainRadar.coverageUrl(px[0], px[1]))
-                        tile?.let { reading = RainRadar.read(it, coverage[ck], px[2], px[3], f.timeS); readAt = p; readFrame = f.path }
-                    }
-                    val nowS = System.currentTimeMillis() / 1000
-                    val w = RainRadar.combine(MetNoWeather.at(series, System.currentTimeMillis()), reading, nowS)
-                    val r = reading
-                    radarFrameS.value = if (r != null && r.covered && nowS - r.frameTimeS <= RainRadar.MAX_AGE_S) r.frameTimeS else null
-                    if (w != now.value && (w != null || series.isNotEmpty())) now.value = w
                 }
-                delay(TICK_MS)
+                // Sleep until the next tick or until the place changes cell, whichever is first.
+                val from = pos.value?.let(::cellOf)
+                withTimeoutOrNull(TICK_MS) {
+                    androidx.compose.runtime.snapshotFlow { pos.value?.let(::cellOf) }.first { it != from }
+                }
             }
         }
     }

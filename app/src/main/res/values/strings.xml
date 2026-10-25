@@ -114,7 +114,7 @@
     <string name="settings_live_traffic">Live traffic overlay</string>
     <string name="settings_live_traffic_hint">Marks slow and stopped traffic in yellow and red while browsing. Navigation already colors your route by traffic.</string>
     <string name="settings_weather_fx">Weather effects</string>
-    <string name="settings_weather_fx_hint">Faint rain, snow, fog or wind over the map for the weather where you are. Rain and snow come from live radar (RainViewer), checked every couple of minutes; fog, wind and storms from MET Norway\'s forecast, asked with your position rounded to about 11 km.</string>
+    <string name="settings_weather_fx_hint">Faint rain, snow, fog or wind over the map for the weather where you are, or wherever the map is looking when that is over 20 km away, such as a city you searched. Rain and snow come from live radar (RainViewer), checked every couple of minutes; fog, wind and storms from MET Norway\'s forecast, asked with the place rounded to about 11 km.</string>
     <string name="settings_weather_customize">Customize weather effects</string>
     <string name="settings_weather_conditions">Simulated weather</string>
     <string name="settings_weather_intensity">Intensity</string>

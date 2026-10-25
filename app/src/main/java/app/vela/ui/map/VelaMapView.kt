@@ -322,6 +322,10 @@ private const val B3D_TILT_OFF = 12.0
 private const val B3D_FADE_MS = 350L
 // Route bar scrub (SPEC 4.7): the car's lead over its real place eases toward the finger's over
 // SCRUB_FOLLOW_S, and back to nothing over SCRUB_RETURN_S once the scrub ends.
+// Weather effects follow the map's view when it looks this far from the car (SPEC 6), checked
+// this often.
+private const val WEATHER_VIEW_M = 20_000.0
+private const val WEATHER_LOOK_MS = 300L
 private const val SCRUB_FOLLOW_S = 0.12f
 private const val SCRUB_RETURN_S = 0.45f
 // The style light for extrusions. 0 draws every face in the palette color (no wall reads as a
@@ -5751,7 +5755,30 @@ fun VelaMapView(
     )
     // Weather effects (SPEC 6): over the map, under the puck and every control. The wind is
     // turned into screen space with the camera's bearing, read in the draw phase.
-    WeatherFx.Keeper(myLocation)
+    // The place whose weather is drawn (SPEC 6): the car, or the place the map is looking at when
+    // that is over WEATHER_VIEW_M away (a searched city, a pan across the country). A view is
+    // taken once it has held one 0.1-degree cell for two looks, so a flight there asks nothing
+    // on the way; a drive always uses the car.
+    val weatherMe = rememberUpdatedState(myLocation)
+    val weatherAt = remember { mutableStateOf<LatLng?>(null) }
+    LaunchedEffect(mapRef) {
+        val m = mapRef ?: return@LaunchedEffect
+        var held: Pair<Long, Long>? = null
+        while (true) {
+            val me = weatherMe.value
+            val c = m.cameraPosition.target?.let { LatLng(it.latitude, it.longitude) }
+            val want = when {
+                navModeHolder.value || c == null -> me
+                me == null || c.distanceTo(me) > WEATHER_VIEW_M -> c
+                else -> me
+            }
+            val cell = want?.let { Math.round(it.lat * 10) to Math.round(it.lng * 10) }
+            if (want == me || cell == held) weatherAt.value = want
+            held = cell
+            kotlinx.coroutines.delay(WEATHER_LOOK_MS)
+        }
+    }
+    WeatherFx.Keeper(weatherAt.value)
     WeatherOverlay(
         dark = darkTheme,
         screenWindDeg = {
