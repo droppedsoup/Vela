@@ -18,6 +18,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.scale
 import app.vela.core.VelaConfig
 import app.vela.core.data.weather.MetNoWeather
+import app.vela.core.data.weather.RainRadar
+import app.vela.core.model.distanceTo
 import app.vela.core.data.weather.WeatherNow
 import app.vela.core.model.LatLng
 import kotlinx.coroutines.Dispatchers
@@ -34,8 +36,9 @@ import kotlin.math.sin
 /**
  * Weather effects over the map (SPEC 6, Weather effects): faint rain, snow, sleet, storm, fog
  * or wind drawn over the map for the weather where the map is, from MET Norway
- * ([MetNoWeather]). The whole hourly forecast is kept and the hour that applies is picked every
- * [PICK_MS], so rain that stops at four stops on the map at four with no request; the forecast is
+ * ([MetNoWeather]) for the kind of weather, with what is falling taken from RainViewer's live
+ * radar ([RainRadar]) where it reaches. The whole hourly forecast is kept and the hour that applies
+ * is picked every tick, so rain that stops at four stops on the map at four with no request; the forecast is
  * asked again when the position (to one decimal, about 11 km) changes, which a drive does every
  * few minutes, and when the answer expires (its `Expires` header, at least [MIN_REFRESH_MS] and
  * at most [MAX_REFRESH_MS] on). Nothing is asked or drawn with the setting off (pref `weather_fx`, on). Each effect's look is
@@ -84,7 +87,6 @@ object WeatherFx {
 
     fun resetTune(context: Context, kind: WeatherNow.Kind) = setTune(context, kind, Tune())
 
-    private const val PICK_MS = 60_000L
     private const val MIN_REFRESH_MS = 10 * 60_000L
     private const val MAX_REFRESH_MS = 60 * 60_000L
     private const val KEY = "weather_fx"
@@ -128,25 +130,90 @@ object WeatherFx {
         }.getOrNull()
     }
 
-    /** Keeps [now] current for [at] while composed and the setting is on: the forecast for the
-     *  position's cell, the hour of it that applies, checked every [PICK_MS]. */
+    /** Where the drawn weather comes from now, for the settings line: the radar's frame time
+     *  (epoch s) when the radar decided what falls, else null (the forecast alone). */
+    val radarFrameS = mutableStateOf<Long?>(null)
+
+    private const val RADAR_CHECK_MS = 2 * 60_000L
+    private const val RADAR_MOVE_M = 1_000.0
+    private const val TICK_MS = 30_000L
+
+    /** The newest radar frame, or null. */
+    private suspend fun radarFrame(): RainRadar.Frame? = withContext(Dispatchers.IO) {
+        runCatching {
+            http.newCall(Request.Builder().url(RainRadar.MAPS_URL).header("User-Agent", VelaConfig.VELA_UA).build())
+                .execute().use { r -> if (r.isSuccessful) r.body?.string()?.let(RainRadar::latestFrame) else null }
+        }.getOrNull()
+    }
+
+    /** A tile's pixels (ARGB, [RainRadar.TILE] square), or null. */
+    private suspend fun tilePixels(url: String): IntArray? = withContext(Dispatchers.IO) {
+        runCatching {
+            http.newCall(Request.Builder().url(url).header("User-Agent", VelaConfig.VELA_UA).build()).execute().use { r ->
+                val bytes = if (r.isSuccessful) r.body?.bytes() else null
+                val bmp = bytes?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) } ?: return@use null
+                if (bmp.width != RainRadar.TILE || bmp.height != RainRadar.TILE) { bmp.recycle(); return@use null }
+                IntArray(RainRadar.TILE * RainRadar.TILE).also { px -> bmp.getPixels(px, 0, RainRadar.TILE, 0, 0, RainRadar.TILE, RainRadar.TILE); bmp.recycle() }
+            }
+        }.getOrNull()
+    }
+
+    /**
+     * Keeps [now] current for [at] while composed and the setting is on. Two sources, worked
+     * every [TICK_MS]: the hourly forecast for the position's cell (asked again on a new cell or
+     * when it expires) for the kind of weather, wind and fog, and the live radar for what is
+     * falling where the car is. The radar's frame list is checked every [RADAR_CHECK_MS]; its z7
+     * tile is fetched once per frame and tile (one tile is about 300 km across), and read again
+     * locally whenever the car has moved [RADAR_MOVE_M]. [RainRadar.combine] puts them together.
+     */
     @Composable
     fun Keeper(at: LatLng?) {
-        val cell = at?.let { Math.round(it.lat * 10) to Math.round(it.lng * 10) }
+        val pos = androidx.compose.runtime.rememberUpdatedState(at)
         val enabled = on.value
-        LaunchedEffect(cell, enabled) {
-            if (!enabled || cell == null) return@LaunchedEffect
+        LaunchedEffect(enabled) {
+            if (!enabled) return@LaunchedEffect
             var series = emptyList<MetNoWeather.Step>()
+            var seriesCell: Pair<Long, Long>? = null
             var refreshAt = 0L
+            var frame: RainRadar.Frame? = null
+            var frameCheckedAt = 0L
+            var tileKey: String? = null
+            var tile: IntArray? = null
+            val coverage = HashMap<Long, IntArray?>()
+            var reading: RainRadar.Reading? = null
+            var readAt: LatLng? = null
+            var readFrame: String? = null
             while (isActive) {
-                if (SystemClock.elapsedRealtime() >= refreshAt) {
-                    val got = fetch(cell.first / 10.0, cell.second / 10.0)
-                    if (got != null) { series = got.first; refreshAt = SystemClock.elapsedRealtime() + got.second }
-                    else refreshAt = SystemClock.elapsedRealtime() + MIN_REFRESH_MS
+                val p = pos.value
+                if (p != null) {
+                    val clock = SystemClock.elapsedRealtime()
+                    val cell = Math.round(p.lat * 10) to Math.round(p.lng * 10)
+                    if (cell != seriesCell || clock >= refreshAt) {
+                        val got = fetch(cell.first / 10.0, cell.second / 10.0)
+                        if (got != null) { series = got.first; seriesCell = cell; refreshAt = clock + got.second }
+                        else refreshAt = clock + MIN_REFRESH_MS
+                    }
+                    if (frame == null || clock - frameCheckedAt >= RADAR_CHECK_MS) {
+                        radarFrame()?.let { frame = it }
+                        frameCheckedAt = clock
+                    }
+                    val f = frame
+                    val moved = readAt?.let { it.distanceTo(p) >= RADAR_MOVE_M } ?: true
+                    if (f != null && (moved || readFrame != f.path)) {
+                        val px = RainRadar.pixelOf(p.lat, p.lng)
+                        val key = "${f.path}/${px[0]}/${px[1]}"
+                        if (key != tileKey) { tile = tilePixels(RainRadar.tileUrl(f, px[0], px[1])); tileKey = key }
+                        val ck = (px[0].toLong() shl 32) or px[1].toLong()
+                        if (!coverage.containsKey(ck)) coverage[ck] = tilePixels(RainRadar.coverageUrl(px[0], px[1]))
+                        tile?.let { reading = RainRadar.read(it, coverage[ck], px[2], px[3], f.timeS); readAt = p; readFrame = f.path }
+                    }
+                    val nowS = System.currentTimeMillis() / 1000
+                    val w = RainRadar.combine(MetNoWeather.at(series, System.currentTimeMillis()), reading, nowS)
+                    val r = reading
+                    radarFrameS.value = if (r != null && r.covered && nowS - r.frameTimeS <= RainRadar.MAX_AGE_S) r.frameTimeS else null
+                    if (w != now.value && (w != null || series.isNotEmpty())) now.value = w
                 }
-                val w = MetNoWeather.at(series, System.currentTimeMillis())
-                if (w != now.value && (w != null || series.isNotEmpty())) now.value = w
-                delay(PICK_MS)
+                delay(TICK_MS)
             }
         }
     }

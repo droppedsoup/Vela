@@ -257,9 +257,10 @@ Small items, one pull request each.
 Each of these passed its unit tests and has not been seen or heard where it matters. Take one
 off the list when it has been.
 
-- Weather effects and their editor (SPEC 6). Parsing is unit tested and the reply checked live;
-  the effects, the editor and its preview have been seen on no phone, and their cost while
-  raining is not measured.
+- Weather effects, their editor and the radar reading (SPEC 6). Parsing is unit tested, the
+  forecast reply checked live and the radar color match run on live tiles over Europe; the
+  effects, the editor and a drive through rain that starts and stops have been seen on no phone,
+  and their cost while raining is not measured.
 - Scrubbing the route bar (SPEC 4.7). Builds and passes the D-pad audit; the drag, the car's
   drive along the route and back, and the return after 7 s or a compass tap have not been seen on
   a phone.

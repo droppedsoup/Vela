@@ -165,6 +165,28 @@ internal fun WeatherEditor() {
     Hint(stringResource(R.string.settings_weather_editor_hint))
 }
 
+/** What the map is drawing now and where it came from: the radar (with its frame's age) or the
+ *  forecast alone. */
+@Composable
+internal fun WeatherNowLine() {
+    val w = WeatherFx.now.value
+    val text = if (w == null) stringResource(R.string.settings_weather_now_waiting) else {
+        val what = stringResource(
+            when {
+                w.kind == WeatherNow.Kind.CLEAR && w.windy -> R.string.settings_weather_wind
+                w.kind == WeatherNow.Kind.CLEAR -> R.string.settings_weather_clear
+                else -> kindLabel(w.kind)
+            },
+        )
+        val frame = WeatherFx.radarFrameS.value
+        if (frame != null) {
+            val min = ((System.currentTimeMillis() / 1000 - frame) / 60).toInt().coerceAtLeast(0)
+            androidx.compose.ui.res.pluralStringResource(R.plurals.settings_weather_now_radar, min, what, min)
+        } else stringResource(R.string.settings_weather_now_forecast, what)
+    }
+    Hint(text)
+}
+
 private fun kindLabel(k: WeatherNow.Kind): Int = when (k) {
     WeatherNow.Kind.RAIN -> R.string.settings_weather_rain
     WeatherNow.Kind.SNOW -> R.string.settings_weather_snow

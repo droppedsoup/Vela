@@ -114,7 +114,7 @@
     <string name="settings_live_traffic">Live traffic overlay</string>
     <string name="settings_live_traffic_hint">Marks slow and stopped traffic in yellow and red while browsing. Navigation already colors your route by traffic.</string>
     <string name="settings_weather_fx">Weather effects</string>
-    <string name="settings_weather_fx_hint">Faint rain, snow, fog or wind over the map for the weather where you are. The weather comes from MET Norway, asked with your position rounded to about 11 km.</string>
+    <string name="settings_weather_fx_hint">Faint rain, snow, fog or wind over the map for the weather where you are. Rain and snow come from live radar (RainViewer), checked every couple of minutes; fog, wind and storms from MET Norway\'s forecast, asked with your position rounded to about 11 km.</string>
     <string name="settings_weather_customize">Customize weather effects</string>
     <string name="settings_weather_conditions">Simulated weather</string>
     <string name="settings_weather_intensity">Intensity</string>
@@ -131,6 +131,13 @@
     <string name="settings_weather_haze_strength">Haze strength</string>
     <string name="settings_weather_haze_height">Haze height</string>
     <string name="settings_weather_reset">Reset %1$s</string>
+    <string name="settings_weather_clear">Clear</string>
+    <string name="settings_weather_now_waiting">Waiting for the weather where you are.</string>
+    <string name="settings_weather_now_forecast">Now: %1$s, from the forecast (no radar here).</string>
+    <plurals name="settings_weather_now_radar">
+        <item quantity="one">Now: %1$s, from radar %2$d minute ago.</item>
+        <item quantity="other">Now: %1$s, from radar %2$d minutes ago.</item>
+    </plurals>
     <string name="settings_weather_light_map">Light map</string>
     <string name="settings_weather_dark_map">Dark map</string>
     <string name="settings_weather_rain">Rain</string>

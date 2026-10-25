@@ -48,7 +48,10 @@ internal fun MapSettingsScreen(onBack: () -> Unit, homeSet: Boolean = false) {
             onCheckedChange = { app.vela.ui.map.WeatherFx.set(context, it) },
             hint = stringResource(R.string.settings_weather_fx_hint),
         )
-        if (app.vela.ui.map.WeatherFx.on.value) WeatherEditor()
+        if (app.vela.ui.map.WeatherFx.on.value) {
+            WeatherNowLine()
+            WeatherEditor()
+        }
         GroupDivider()
         ToggleRow(
             label = stringResource(R.string.settings_transit_layer),

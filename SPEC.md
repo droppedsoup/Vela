@@ -66,7 +66,7 @@ GrapheneOS and other ROMs with no GMS. License GPLv3. Distribution is F-Droid an
 | Traffic and live ETA | Google directions | Yes | No |
 | Walking, cycling | Walk: OSRM foot; Google's walk only when 15% shorter (`WALK_GOOGLE_SHORTER`). Bike: safety-weighted by default, on-phone profile, else Valhalla | Walk: to compare. Bike: not by default | Downloaded region |
 | Traffic layer; satellite past z19 | Google raster tiles. Traffic on by default (`Traffic`, `traffic_on`), satellite off | Yes | No |
-| Weather effects | MET Norway locationforecast, the position to one decimal | No | No |
+| Weather effects | MET Norway locationforecast (the position to one decimal) for the kind of weather; RainViewer's public radar (z7 tiles) for what falls now | No | No |
 | Traffic controls (lights, stops, crossings, humps) | Per-region road-features bake, Overpass only where no region exists | No | Yes |
 | Surveillance and speed cameras | Bundled and hosted DeFlock dataset; OSM speed cameras | No | Yes |
 | Fuel prices on gas stations | US: Google's search reply. UK: the government's Fuel Finder, trimmed and hosted on the `fuel-gb` release (5.8) | US: in the search. UK: no | UK: the last file downloaded |
@@ -4075,6 +4075,23 @@ A version query on `BAKED_URL` moves the map cache off old tiles after a rebake.
   wind (m/s to km/h). Every minute `MetNoWeather.at` picks the step that has begun, so rain the
   forecast ends at four ends on the map at four with no request; a forecast whose last step is
   over 3 hours old draws nothing. Wind draws by itself from `WINDY_KMH` (29 km/h).
+- What falls comes from RainViewer's public radar (`RainRadar`), new frames every 10 minutes:
+  the frame list (`weather-maps.json`) is checked every 2 minutes, the z7 tile under the car
+  (the free tier's deepest, about 1 km a pixel and 300 km a tile) is fetched once per frame and
+  tile, with its coverage tile once, and read again locally each time the car has moved 1 km.
+  The free tier serves one palette (Universal Blue) whatever is asked, so a pixel is matched to
+  the nearest color of RainViewer's published table (`rainviewer_api_colors_table.csv`, rain rows
+  from 5 dBZ, snow rows from 0, within a distance of 24 per channel) for its reflectivity and
+  rain or snow. Wet when 3 of the 25 pixels within 2 px show rain from 15 dBZ or snow from 10,
+  at their median; snow when most are snow. On z7 tiles over Europe the match read 1 to 8
+  percent of the colored pixels as smoothed edges and left them out.
+- `RainRadar.combine` puts the two together every 30 s: a wet reading sets rain or snow at the
+  radar's intensity (rain 0.4 under 25 dBZ, 0.7 under 35, else 1.0; snow under 20 and 30),
+  sleet when the forecast says sleet, a storm when it says thunder or the cell reaches 50 dBZ; a
+  dry reading clears what the forecast had falling and keeps its fog and wind. No coverage (the
+  coverage tile is black there), no reading or a frame over 30 minutes old leaves the forecast.
+  Settings shows what is drawn and whether it came from radar (with the frame's age) or the
+  forecast.
 - `WeatherOverlay` draws over the map, under the puck and every control: up to 110 rain streaks
   slanted by the wind, 80 snowflakes swaying as they fall (sleet takes half of each), 9 faint
   wind streaks crossing in the wind's direction on screen (its bearing less the camera's) when
