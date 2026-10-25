@@ -13,7 +13,13 @@ object RerouteFreshness {
     const val MAX_ORIGIN_ADVANCE_M = 150.0
     const val CURRENT_ROUTE_CORRIDOR_M = 70.0
 
-    fun canAdopt(route: Route, requestFrom: LatLng, newest: LatLng?): Boolean {
+    /** After this many stale answers in a row the next one is adopted whatever its origin: on a
+     *  slow link at highway speed every answer lands more than [MAX_ORIGIN_ADVANCE_M] late, and
+     *  rejecting them all would leave the driver with no route at all. */
+    const val MAX_STALE_REJECTS = 2
+
+    fun canAdopt(route: Route, requestFrom: LatLng, newest: LatLng?, staleRejects: Int = 0): Boolean {
+        if (staleRejects >= MAX_STALE_REJECTS) return true
         if (newest == null || newest.distanceTo(requestFrom) <= MAX_ORIGIN_ADVANCE_M) return true
         if (route.polyline.size < 2) return false
         return RouteProjection.alongMeters(

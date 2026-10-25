@@ -1662,7 +1662,10 @@ LADDER_SNAP_RESERVE_MS       6_000   an escalated fetch stops waiting for Google
 - Before a returned reroute is adopted, `RerouteFreshness` checks the driver's latest fix:
   if the driver is more than 150 m past the request's origin, the new route must come within
   70 m of the latest position. Otherwise the stale result is dropped and the off-route latch
-  is cleared for a new request. A shorter urgent deadline and cooldown reduce recovery lag;
+  is cleared for a new request. After `MAX_STALE_REJECTS` (2) stale results in a row the next
+  one is adopted whatever its origin: on a slow link at highway speed every answer lands late,
+  and dropping them all leaves no route. The count resets on an adopted route and on every new
+  drive. A shorter urgent deadline and cooldown reduce recovery lag;
   the escalated retry ladder retains its longer deadline.
 - The first `REROUTE_ESCALATE_AFTER` attempts are urgent: one try per source, a budget of the
   deadline minus the finish reserve, shorter hybrid waits, no lane detail, and no via-snap

@@ -193,7 +193,8 @@ An attempt asks for a route the way planning does ([chapter 5](05-routing.md)), 
 and a heading added. An urgent attempt has 12 seconds to finish; after two failures the full
 40-second ladder remains available. A result computed from a stale origin is discarded when
 the latest GPS fix has advanced more than 150 m and the new route is over 70 m away at that
-position. The next off-route fix can initiate another attempt.
+position. The next off-route fix can initiate another attempt. After two such discards in a row
+the next result is taken anyway, so a slow connection at highway speed still gets a route.
 
 The budget is the deadline minus the finish reserve. It travels into the fetch (`RouteBudget`),
 and each source gets a share:

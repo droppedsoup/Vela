@@ -116,6 +116,8 @@ class NavSession @Inject constructor(
     @Volatile private var rerouteDeadlineMs = REROUTE_FETCH_TIMEOUT_MS
     /** Consecutive reroute attempts that came back with nothing; reset on any adopted route. */
     @Volatile private var rerouteFailStreak = 0
+    // Reroutes in a row that came back from a position the car had already left ([RerouteFreshness]).
+    @Volatile private var staleRerouteStreak = 0
     // @Volatile: written on the Default dispatcher (reroute coroutine) / caller thread and read
     // on the location thread — a stale read would defeat the cooldown or the generation guard.
     @Volatile private var lastRerouteAdoptMs = 0L
@@ -226,6 +228,7 @@ class NavSession @Inject constructor(
         // A new drive starts lean: the previous drive's bad patch of coverage says nothing about
         // this one, and inheriting its streak would send the first reroute straight to the ladder.
         rerouteFailStreak = 0
+        staleRerouteStreak = 0
         rerouteDeadlineMs = REROUTE_FETCH_TIMEOUT_MS
         dismissedFasterKey = 0L
         dismissedFasterSaving = 0.0
@@ -331,6 +334,7 @@ class NavSession @Inject constructor(
         rerouteJob?.cancel()
         pendingLatchClear.set(false)
         rerouteFailStreak = 0
+        staleRerouteStreak = 0
         rerouteDeadlineMs = REROUTE_FETCH_TIMEOUT_MS
         voice.stop()
         destination = null
@@ -1125,12 +1129,16 @@ class NavSession @Inject constructor(
             }
             // A directions fetch may succeed after the car has already taken another road.
             // Reject a route based on an old origin if it does not pass anywhere near the
-            // newest fix, rather than adopting guidance behind the moving car.
-            if (!RerouteFreshness.canAdopt(r, loc, lastLoc)) {
-                note("reroute returned behind current position; retrying from a fresh fix")
+            // newest fix, rather than adopting guidance behind the moving car. Not without end:
+            // on a slow link at speed every answer is late, and some guidance beats none.
+            if (!RerouteFreshness.canAdopt(r, loc, lastLoc, staleRerouteStreak)) {
+                staleRerouteStreak++
+                note("reroute returned behind current position (stale $staleRerouteStreak); retrying from a fresh fix")
                 pendingLatchClear.set(true)
                 return@launch
             }
+            if (staleRerouteStreak > 0) note("reroute adopted after $staleRerouteStreak stale answer(s)")
+            staleRerouteStreak = 0
             // New route starts here → recompute the marks, reset the counter. Unlike the faster-route
             // OFFER we accept a route that couldn't include the stops (being guided beats staying
             // off-route), but we say so and KEEP the stops in the plan — their marks are null on this

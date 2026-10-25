@@ -26,4 +26,10 @@ class RerouteFreshnessTest {
     @Test fun staleCandidateOnWrongRoadIsRejected() {
         assertFalse(RerouteFreshness.canAdopt(route, start, LatLng(38.56, -121.85)))
     }
+
+    @Test fun aStaleCandidateIsAdoptedAfterTwoRejectionsInARow() {
+        val wrongRoad = LatLng(38.56, -121.85)
+        assertFalse(RerouteFreshness.canAdopt(route, start, wrongRoad, staleRejects = 1))
+        assertTrue(RerouteFreshness.canAdopt(route, start, wrongRoad, staleRejects = RerouteFreshness.MAX_STALE_REJECTS))
+    }
 }
