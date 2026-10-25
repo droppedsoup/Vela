@@ -1287,6 +1287,10 @@ During a drive:
   `STOP_NEAR_PIN_M` (250 m) of its pin: the middle of a mall or a park gets no mark, and
   without this such a stop stays ahead for good. The rule is off between a stops edit and the
   route for the new list.
+- Reordering or adding stops advances the navigation session generation and cancels prior
+  reroute and recheck jobs, so a late result cannot replace the edited stop plan. The step-list
+  leg divider locates maneuvers and stops in forward progress order, including return passes
+  on a road visited earlier.
 - The cues and the skip test act only while the engine's route is the very object the marks
   were measured on (`planRoute`). `applyEnrichedRoute(base, lit)` therefore replaces
   `_state.route`, `planRoute` and every other reference to `base` together, and does nothing
@@ -1445,6 +1449,13 @@ Each fix that reaches `NavSession.onLocation` runs in this order: project it ont
   nothing about direction: its course and the course derived from the last fix are not taken,
   and the heading holds. On such a fix the course drifted 20 degrees on a straight approach to a
   light (issue #818).
+- A GPS course is accepted only with speed greater than 0.5 m/s on the phone, or 1 m/s on
+  the car, bearing accuracy at most 45 degrees when supplied, and no wide (over 30 m) fix
+  below 3 m/s (`CourseQuality`). When the phone derives a course from consecutive positions,
+  the displacement must exceed 8 m or 1.5 times the latest horizontal accuracy, whichever is
+  greater. The car uses the same displacement gate when deriving its own heading. The Android
+  Auto session passes the accepted course and location accuracy to `NavSession`, so heading
+  disagreement can detect missed turns there as it does on the phone.
 - A speed under 3 m/s on a wide fix, or on any fix while the phone is at rest, reads as 0: a
   parked car's 0.7 m/s showed as 1.5 mph on the tile (issue #819). At rest is
   `core/location/Stillness`: the accelerometer, sampled every 100 ms over 15 samples while a
@@ -1622,8 +1633,8 @@ At 12 m a car gets 42 m and 84 m. `OFF_ROUTE_M` (40 m) and `FAR_OFF_M` (90 m) ar
 #### Rerouting
 
 ```
-REROUTE_COOLDOWN_MS         10_000   minimum gap between adopted reroutes
-REROUTE_FETCH_TIMEOUT_MS    20_000   an urgent attempt's deadline
+REROUTE_COOLDOWN_MS          6_000   minimum gap between adopted reroutes
+REROUTE_FETCH_TIMEOUT_MS    12_000   an urgent attempt's deadline
 REROUTE_LADDER_TIMEOUT_MS   40_000   an escalated attempt's deadline
 REROUTE_ESCALATE_AFTER           2   failed urgent attempts before the full ladder
 REROUTE_STUCK_GRACE_MS       5_000   past deadline plus this, a running job is abandoned
@@ -1648,6 +1659,11 @@ LADDER_SNAP_RESERVE_MS       6_000   an escalated fetch stops waiting for Google
   on-device search, and a fetch stuck there would otherwise block every later reroute.
 - A failed fetch clears the off-route latch on the location thread, and so does a request the
   cooldown turned away, so the next deviated fixes ask again.
+- Before a returned reroute is adopted, `RerouteFreshness` checks the driver's latest fix:
+  if the driver is more than 150 m past the request's origin, the new route must come within
+  70 m of the latest position. Otherwise the stale result is dropped and the off-route latch
+  is cleared for a new request. A shorter urgent deadline and cooldown reduce recovery lag;
+  the escalated retry ladder retains its longer deadline.
 - The first `REROUTE_ESCALATE_AFTER` attempts are urgent: one try per source, a budget of the
   deadline minus the finish reserve, shorter hybrid waits, no lane detail, and no via-snap
   unless an avoid is on. After that the three-try ladder runs under the longer deadline. The
@@ -5666,7 +5682,9 @@ The map:
   and the zoom (`ZOOM_EASE` 0.06). A fix with no speed takes the distance since the last fix over
   the time between them (0.2 to 5 s apart), capped at `FIX_SPEED_MAX_MPS` (70): read as parked,
   it held the zoom at its closest. A fix with no bearing takes the direction from the last fix
-  once it has moved `FIX_COURSE_MIN_M` (3 m).
+  once it has moved at least `FIX_COURSE_MIN_M` (3 m), or 1.5 times the reported location
+  accuracy, whichever is greater. The same `CourseQuality` check rejects bearing uncertainty
+  greater than 45 degrees and wide, slow fixes before the course can steer the view.
 - The arrow's heading is the GPS course above `STOPPED_MPS` (1 m/s) with a bearing accuracy of
   45 degrees or better, a fix wider than `Stillness.ACC_TRUST_M` (30 m) counting only from
   `Stillness.SLOW_MPS` (3 m/s); else, while moving or before any heading is known, the route's

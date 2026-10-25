@@ -62,6 +62,31 @@ class NavStopMarksTest {
         assertEquals(true, marks[1]!! > marks[0]!!)
     }
 
+    @Test fun projectionStaysInsideForwardWindowOnLongSegment() {
+        // One long eastbound segment overlaps the progress window but the fix is behind it.
+        // It must project to the START of the window, never to the earlier point on the road.
+        val line = listOf(LatLng(38.55, -121.90), LatLng(38.55, -121.70))
+        val cumulative = NavEngine.cumulative(line)
+        val half = cumulative.last() / 2.0
+        val projected = NavEngine.projectAlong(
+            line, cumulative, LatLng(38.55, -121.88), half, cumulative.last(),
+        )
+        assertEquals(half, projected.first, 1.0)
+    }
+
+    @Test fun stopOnLongReturnSegmentKeepsForwardProgress() {
+        // Both stops are on the same long return segment, with the second farther back.
+        // The later mark should never move backward to an earlier position on the segment.
+        val line = listOf(
+            LatLng(38.55, -121.90), LatLng(38.55, -121.70), LatLng(38.55, -121.90),
+        )
+        val marks = NavEngine.stopMarks(route(line), listOf(
+            LatLng(38.55, -121.78), LatLng(38.55, -121.82),
+        ))
+        assertNotNull(marks[0]); assertNotNull(marks[1])
+        assertEquals(true, marks[1]!! >= marks[0]!!)
+    }
+
     @Test fun emptyAndDegenerateInputs() {
         assertEquals(emptyList<Double?>(), NavEngine.stopMarks(route(poly), emptyList()))
         // A route with no drawable line → every stop is unlocatable (null), never crashes.
