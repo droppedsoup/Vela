@@ -257,6 +257,8 @@ Small items, one pull request each.
 Each of these passed its unit tests and has not been seen or heard where it matters. Take one
 off the list when it has been.
 
+- Scrubbing the route bar (SPEC 4.7). Builds and passes the D-pad audit; the drag, the camera
+  ride and the return after 7 s or a compass tap have not been seen on a phone.
 - Traffic as lines on the roads (SPEC 6, Rasters). Rendered from live tiles in a desk check; the
   update pass, the crossfade from the raster and the cost of the pass on a phone have not been
   seen on one.

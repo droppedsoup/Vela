@@ -2,6 +2,7 @@ package app.vela.ui.map
 
 import android.content.Context
 import app.vela.R
+import kotlinx.coroutines.flow.collectLatest
 import app.vela.core.data.MapDataSource
 import app.vela.core.location.LocationProvider
 import app.vela.core.model.LatLng
@@ -179,6 +180,10 @@ internal class NavController(
                 // Speak an approach warning for a camera coming up (issue #229). Cheap per tick:
                 // a scan of a short list; the projection was done once when the route landed.
                 if (ns.navigating) { maybeWarnCamera(ns); maybeWarnFlock(ns); maybeWarnPolice(ns); maybeWarnSpeeding(); maybeWarnBridge(ns) }
+                // The route bar's scrub reads the drive's route and progress (RouteScrub).
+                app.vela.ui.nav.RouteScrub.route = if (ns.navigating) nsRoute else null
+                app.vela.ui.nav.RouteScrub.traveledM = ns.nav.traveledM
+                if (!ns.navigating) app.vela.ui.nav.RouteScrub.end()
                 _state.update {
                     it.copy(
                         navigating = ns.navigating,
@@ -262,6 +267,24 @@ internal class NavController(
                     if (vs.replaying && !vs.demoDriving) return@collect
                     if (on) routeFlockKey = null // force the projection even for the same route
                     refreshRouteFlock(r)
+                }
+        }
+        // Scrubbing the route bar (RouteScrub): the follow camera steps aside while the arrow is up
+        // the bar, the camera goes back to the car when it ends, and it ends RESET_MS after the
+        // finger lets go.
+        scope.launch {
+            androidx.compose.runtime.snapshotFlow { app.vela.ui.nav.RouteScrub.fraction.value != null }
+                .collect { on ->
+                    if (on) _state.update { it.copy(navCameraDetached = true, previewStepIndex = null, inNavOverview = false) }
+                    else if (_state.value.navigating) recenterNav()
+                }
+        }
+        scope.launch {
+            androidx.compose.runtime.snapshotFlow { app.vela.ui.nav.RouteScrub.releasedAt.longValue }
+                .collectLatest { at ->
+                    if (at <= 0L) return@collectLatest
+                    kotlinx.coroutines.delay(app.vela.ui.nav.RouteScrub.RESET_MS)
+                    app.vela.ui.nav.RouteScrub.end()
                 }
         }
         // Same for bridge openings: on mid-drive asks NDW now, off clears the list.
@@ -641,7 +664,10 @@ internal class NavController(
     /** Re-center on the vehicle and resume follow (the in-nav Re-center button). */
     /** Re-attach the follow-camera AND snap the maneuver banner back to the current
      *  step - so recenter undoes both a manual pan and a swipe-ahead step preview. */
-    fun recenterNav() = _state.update { it.copy(navCameraDetached = false, previewStepIndex = null, inNavOverview = false) }
+    fun recenterNav() {
+        app.vela.ui.nav.RouteScrub.end() // Re-center also puts a scrubbed route bar arrow back
+        _state.update { it.copy(navCameraDetached = false, previewStepIndex = null, inNavOverview = false) }
+    }
 
     /** The in-nav whole-route overview (Google's fly-over). CAMERA ONLY - guidance, voice and the
      *  moving puck are untouched; marking the camera detached makes the follow step aside and puts

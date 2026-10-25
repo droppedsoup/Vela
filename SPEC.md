@@ -5393,6 +5393,15 @@ the catalog, the ones switched off included; a pick runs that search. The one-bu
   Congestion is painted on the track by level; a light and a stop sign are the map's own
   bitmaps (`trafficLightBitmap`, `stopSignBitmap`) on the track, `MINI` (16 dp) tall; cameras,
   crossings and humps are `BADGE` (26 dp) discs beside it with their glyphs (issue #828).
+- Route bar scrub (`RouteScrub`): a finger anywhere on the bar puts its arrow there and drags it,
+  and D-pad up and down step it a tenth of the bar (the bar is a focus stop). The arrow's place is
+  a fraction of the bar's span; the map eases (`SCRUB_EASE_MS`, 220 ms) to the point that far
+  along the route ahead (`traveledM` plus fraction times `spanM`), facing the route's heading
+  from there to 40 m on, keeping its tilt and zoom. While the arrow is up the bar NavController
+  marks the camera detached (the follow steps aside, Re-center shows) and clears a step preview
+  or the overview. It ends `RESET_MS` (7 s) after the finger lets go, on a compass tap (which
+  then does nothing else), on Re-center, and when the drive ends; the camera then glides back to
+  the car. Guidance, voice and the puck are untouched.
 - Search along the route is a page (`NavSearchChips`): the whole screen in portrait, the left
   column over a dimmed map in landscape, where a tap on the dimmed part closes it. It has a
   search field, `QuickCategories.forDrive()` as tiles three to a row with fuel and charging

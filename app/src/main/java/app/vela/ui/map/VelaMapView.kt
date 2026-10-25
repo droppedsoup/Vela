@@ -320,6 +320,8 @@ private const val OVL_GATE_MIN_GAP_MS = 1200L
 private const val B3D_TILT_ON = 20.0
 private const val B3D_TILT_OFF = 12.0
 private const val B3D_FADE_MS = 350L
+// A route bar scrub step glides over this long, so the camera follows the finger without jumps.
+private const val SCRUB_EASE_MS = 220
 // The style light for extrusions. 0 draws every face in the palette color (no wall reads as a
 // wall); at 0.25 a roof stays within ~1% of the palette on the dark map and ~3% under it on the
 // light one, and walls facing away from the light draw up to 25% darker.
@@ -1340,6 +1342,21 @@ fun VelaMapView(
         }
     }
     var styleRef by remember { mutableStateOf<Style?>(null) }
+    // Scrubbing the route bar (SPEC 4.7): the camera rides the route to the arrow's point, facing
+    // along it. NavController has detached the follow, so nothing fights it; tilt and zoom stay.
+    LaunchedEffect(mapRef) {
+        val m = mapRef ?: return@LaunchedEffect
+        androidx.compose.runtime.snapshotFlow { app.vela.ui.nav.RouteScrub.fraction.value }.collect { f ->
+            if (f == null || !navModeHolder.value) return@collect
+            val (p, bearing) = app.vela.ui.nav.RouteScrub.target() ?: return@collect
+            m.easeCamera(
+                CameraUpdateFactory.newCameraPosition(
+                    CameraPosition.Builder(m.cameraPosition).target(MLLatLng(p.lat, p.lng)).bearing(bearing).build(),
+                ),
+                SCRUB_EASE_MS,
+            )
+        }
+    }
     // Slow traffic as lines on the roads at street zoom (SPEC 6, Rasters).
     TrafficLinesLayer.Effect(mapRef, styleRef, trafficOn && app.vela.ui.Traffic.shown(navMode))
     val navPuck = remember { NavPuck() }
@@ -4908,6 +4925,8 @@ fun VelaMapView(
                         return null
                     }
                     findCompass(mapView)?.setOnClickListener {
+                        // While the route bar is scrubbed the compass ends the scrub and does nothing else.
+                        if (app.vela.ui.nav.RouteScrub.active) { app.vela.ui.nav.RouteScrub.end(); return@setOnClickListener }
                         if (!onCompassTapHolder.value()) {
                             // North up and flat, and the kept tilt is let go (Google's compass does both).
                             browseUserTilt[0] = Double.NaN

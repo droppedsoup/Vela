@@ -25,6 +25,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
+import app.vela.ui.dpadHighlight
 import app.vela.core.nav.RouteBar
 import app.vela.ui.formatDistance
 
@@ -45,6 +53,9 @@ fun RouteBarStrip(model: RouteBar.Model, modifier: Modifier = Modifier) {
     val chip = MaterialTheme.colorScheme.surface
     val ink = MaterialTheme.colorScheme.onSurface
     val lightImage = androidx.compose.runtime.remember { app.vela.ui.map.trafficLightBitmap().asImageBitmap() }
+    // Scrubbing (RouteScrub): the arrow rides up the bar with the finger and the map follows.
+    RouteScrub.spanM = model.spanM
+    val scrubAt = (RouteScrub.fraction.value ?: 0f).toDouble()
     val stopImage = androidx.compose.runtime.remember { app.vela.ui.map.stopSignBitmap().asImageBitmap() }
     Column(modifier.width(STRIP_W.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
@@ -56,7 +67,7 @@ fun RouteBarStrip(model: RouteBar.Model, modifier: Modifier = Modifier) {
             textAlign = TextAlign.Center,
             modifier = Modifier.width(STRIP_W.dp).padding(bottom = 2.dp),
         )
-        Box(Modifier.fillMaxWidth().weight(1f)) {
+        Box(Modifier.fillMaxWidth().weight(1f).scrubGestures()) {
             Layout(content = {
                 // The track: a rounded channel the badges sit on.
                 Box(
@@ -116,7 +127,7 @@ fun RouteBarStrip(model: RouteBar.Model, modifier: Modifier = Modifier) {
                         .shadow(2.dp, CircleShape)
                         .clip(CircleShape)
                         .background(chip)
-                        .span(0.0, 0.0, kind = ROLE_PUCK),
+                        .span(scrubAt, scrubAt, kind = ROLE_PUCK),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(Sym.Navigation, contentDescription = null, tint = ink, modifier = Modifier.size(16.dp))
@@ -161,6 +172,49 @@ fun RouteBarStrip(model: RouteBar.Model, modifier: Modifier = Modifier) {
             }
         }
     }
+}
+
+/** Touch and keys for scrubbing (RouteScrub): a finger anywhere on the bar puts the arrow there
+ *  and drags it; up and down on the D-pad step it a tenth of the bar. Letting go starts the
+ *  reset countdown. The fraction uses the layout's own geometry: the track runs from the arrow's
+ *  center, half a badge above the bottom, to half a badge below the top. */
+@Composable
+private fun Modifier.scrubGestures(): Modifier {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val insetPx = with(density) { (BADGE / 2).dp.toPx() }
+    return this
+        .pointerInput(insetPx) {
+            fun frac(y: Float): Float {
+                val track = (size.height - 2 * insetPx).coerceAtLeast(1f)
+                return ((size.height - insetPx - y) / track).coerceIn(0f, 1f)
+            }
+            awaitEachGesture {
+                val down = awaitFirstDown()
+                down.consume()
+                RouteScrub.move(frac(down.position.y))
+                while (true) {
+                    val ev = awaitPointerEvent()
+                    val c = ev.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!c.pressed) break
+                    c.consume()
+                    RouteScrub.move(frac(c.position.y))
+                }
+                RouteScrub.release()
+            }
+        }
+        .onKeyEvent { e ->
+            if (e.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onKeyEvent false
+            val step = when (e.key) {
+                androidx.compose.ui.input.key.Key.DirectionUp -> 0.1f
+                androidx.compose.ui.input.key.Key.DirectionDown -> -0.1f
+                else -> return@onKeyEvent false
+            }
+            RouteScrub.move((RouteScrub.fraction.value ?: 0f) + step)
+            RouteScrub.release()
+            true
+        }
+        .dpadHighlight(RoundedCornerShape(12.dp))
+        .focusable()
 }
 
 private const val STRIP_W = 52 // the track column plus a badge lane beside it
