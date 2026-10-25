@@ -106,7 +106,8 @@ patched style's JSON before it loads: the flat fills for pedestrian areas and pa
 `vela-plaza` twin of Liberty's dotted pattern), wetlands, sports fields, commercial blocks, park
 trails and bike paths, the style light, and Google's traffic raster, hidden until wanted. They
 carry the phone's layer ids, so the palette colors them the same way. The traffic raster is shown
-with no route when the phone's Traffic layer is on, as on the phone, and the place icon tiers take
+when the phone would show it (`Traffic.shown`): with no route when the Traffic layer is on, and
+during a drive too with "Traffic overlay while driving", and the place icon tiers take
 the phone's filters (no vegetation icons; fuel only during a drive). Until the patched style exists
 on a fresh install, the plain style URL loads without any of this.
 

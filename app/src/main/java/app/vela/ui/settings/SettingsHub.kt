@@ -302,6 +302,7 @@ private val SEARCH_INDEX: List<Pair<Int, SettingsSection>> = listOf(
     R.string.settings_app_name_title to SettingsSection.APPEARANCE,
     // Map
     R.string.settings_live_traffic to SettingsSection.MAP,
+    R.string.settings_traffic_in_drive to SettingsSection.MAP,
     R.string.settings_transit_layer to SettingsSection.MAP,
     R.string.settings_topography to SettingsSection.MAP,
     R.string.settings_layers_button to SettingsSection.MAP,

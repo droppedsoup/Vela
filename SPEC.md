@@ -65,7 +65,7 @@ GrapheneOS and other ROMs with no GMS. License GPLv3. Distribution is F-Droid an
 | Driving route | Google's line with open-data steps (`HybridRoute`, section 4.1): FOSSGIS OSRM's where both routes share the road, else a Valhalla map match, map-tile street names, then bare turns. Without Google: the OSRM route. Without OSRM: Google's own short steps, or the on-phone router | Yes | Downloaded `.obf` region |
 | Traffic and live ETA | Google directions | Yes | No |
 | Walking, cycling | Walk: OSRM foot; Google's walk only when 15% shorter (`WALK_GOOGLE_SHORTER`). Bike: safety-weighted by default, on-phone profile, else Valhalla | Walk: to compare. Bike: not by default | Downloaded region |
-| Traffic layer; satellite past z19 | Google raster tiles, both off by default | Yes | No |
+| Traffic layer; satellite past z19 | Google raster tiles. Traffic on by default (`Traffic`, `traffic_on`), satellite off | Yes | No |
 | Traffic controls (lights, stops, crossings, humps) | Per-region road-features bake, Overpass only where no region exists | No | Yes |
 | Surveillance and speed cameras | Bundled and hosted DeFlock dataset; OSM speed cameras | No | Yes |
 | Fuel prices on gas stations | US: Google's search reply. UK: the government's Fuel Finder, trimmed and hosted on the `fuel-gb` release (5.8) | US: in the search. UK: no | UK: the last file downloaded |
@@ -3741,7 +3741,15 @@ Each edge is at least `ROAD_EDGE_DP` (1 dp) wide from z16, growing in from z13.5
 style light of intensity `B3D_LIGHT` (0.25). At 0 every face draws one color and no wall reads as
 a wall. At MapLibre's default 0.5 roofs draw about 40 percent brighter than the palette. At 0.25 a
 roof stays within 1 to 3 percent of the palette color and a wall facing away from the light draws
-up to 25 percent darker.
+up to 25 percent darker. The light is anchored to the map (`ANCHOR_MAP`, azimuth 210, polar 30,
+MapLibre's default angles), so as a drive turns the same walls stay lit.
+
+`building3dColor` shades the color by height: the palette color up to `B3D_TINT_FROM_M` (12 m),
+moved `B3D_TINT_SHARE` (22 percent) toward a slate (`#7a8699`, light palettes) or a pale gray
+(`#b8bec8`, dark palettes) at `B3D_TINT_FULL_M` (90 m) and above. A building with no
+`render_height` takes the palette color. Rendered in MapLibre GL JS over downtown San Francisco at
+z17.2 and 60 degrees of tilt, the towers stand apart from the low blocks; with one color they read
+as one field.
 
 Extrusions show only with the 3D buildings setting on, satellite off, navigation off and the
 camera tilted: on at `B3D_TILT_ON` (20 degrees), off below `B3D_TILT_OFF` (12). Seen straight
@@ -3832,9 +3840,11 @@ collision. Hidden in the overview with the other `vela-nav-` layers.
 
 #### Buildings
 
-- The flat `building` fill draws from z16. `building-3d` draws from z17 at 30 percent of its
-  height, growing to full height by z19 (`applyBuilding3dGeometry`). With extrusions at z16,
-  dense-city towers lean over the roads.
+- The flat `building` fill draws from z16. `building-3d` draws from z17 at `B3D_GROW_FROM` (35
+  percent) of its height, growing to full height by `B3D_FULL_ZOOM` (z18.5,
+  `applyBuilding3dGeometry`). With extrusions at z16, dense-city towers lean over the roads; at
+  half height from z17 and full by z18, downtown San Francisco's towers covered Market Street at
+  z17.2.
 - Overlay footprints (`vela-ovl-<i>`, minzoom 16) draw beneath `building`, so OSM wins wherever it
   has data. Their colors are in 6.2, their visibility in 6.4.
 
@@ -4005,10 +4015,11 @@ A version query on `BAKED_URL` moves the map cache off old tiles after a rebake.
   tiles that never came left far-out tiles stretched into fat bands beside bare patches.
 - It carries a 900 ms `raster-fade-duration`. Google's tiles expire while the map is open, and
   at the default 300 ms a replaced tile reads as the whole layer flickering.
-- It is not drawn during a drive (`navMode`), whatever the setting: the route line carries the
-  traffic, and in the tilted drive view the raster's tiles load at a different zoom for every
-  distance from the camera and expire as the car moves, so the colored bands along a highway
-  grew, shrank and blinked (issue 733). It comes back when the drive ends.
+- It is not drawn during a drive (`navMode`) unless "Traffic overlay while driving"
+  (`Traffic.inDrive`, `traffic_in_drive`, off) is on: the route line carries the traffic, and in
+  the tilted drive view the raster's tiles load at a different zoom for every distance from the
+  camera and expire as the car moves, so the colored bands along a highway grow, shrink and
+  blink (issue 733). `Traffic.shown(navMode)` is the one test, on the phone and in the car.
 - Satellite base imagery (Esri) caps at z19 and MapLibre stretches past it. From z17
   (`SAT_DEEP_PROBE_ZOOM`) `refreshSatDeep` probes Esri's availability index at the view center, 20
   then 21 then 22, stopping at the first missing level. `ensureSatelliteDeep` adds one raster
@@ -5598,8 +5609,8 @@ The map:
   the patched style does not exist yet the plain URL loads, without them; the next render after
   the file appears rebuilds the snapshotter on it (`reloadIfPatched`), so the Traffic switch and
   the fills do not wait for the next connection.
-- `applyOverlays` runs before each themed render: the traffic layer is visible with no route when
-  the phone's Traffic layer is on and "Use Vela without Google" is off, as on the phone, and the
+- `applyOverlays` runs before each themed render: the traffic layer is visible when
+  `Traffic.shown(nav)` holds, as on the phone, and the
   basemap place icon tiers take the phone's `applyPoiTierFilters` (vegetation out; fuel only during
   a drive). Each is set again only when its state changes.
 - Each snapshot's time, zoom, tilt, traffic state and speed are logged under `VelaCar` at debug

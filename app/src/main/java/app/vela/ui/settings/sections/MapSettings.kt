@@ -32,6 +32,15 @@ internal fun MapSettingsScreen(onBack: () -> Unit, homeSet: Boolean = false) {
         SettingsGroup {
         // The top focusable control: Back routes its DOWN here, UP from here goes back to Back.
         LiveTrafficRow(switchModifier = topRow)
+        // Shown only while the overlay is on, as the transit kinds below are.
+        if (app.vela.ui.Traffic.on.value) {
+            ToggleRow(
+                label = stringResource(R.string.settings_traffic_in_drive),
+                checked = app.vela.ui.Traffic.inDrive.value,
+                onCheckedChange = { app.vela.ui.Traffic.setInDrive(context, it) },
+                hint = stringResource(R.string.settings_traffic_in_drive_hint),
+            )
+        }
         GroupDivider()
         ToggleRow(
             label = stringResource(R.string.settings_transit_layer),

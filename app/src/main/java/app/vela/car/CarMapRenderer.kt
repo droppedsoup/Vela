@@ -840,10 +840,11 @@ class CarMapRenderer(
     }
 
     /** The style's switchable layers, set when their state changes: Google's traffic raster with
-     *  no route when the phone's Traffic layer is on (and Google is allowed), as the phone shows
+     *  no route (or during a drive too, with the phone's "Traffic overlay while driving") when the
+     *  phone's Traffic layer is on (and Google is allowed), as the phone shows
      *  it; and the basemap's place icons cut to fuel during a drive, as on the phone. */
     private fun applyOverlays(s: MapSnapshotter, nav: Boolean) {
-        val traffic = app.vela.ui.Traffic.on.value && !app.vela.ui.GoogleFree.on.value && !nav
+        val traffic = app.vela.ui.Traffic.shown(nav)
         if (traffic != trafficShown) {
             trafficShown = traffic
             runCatching {

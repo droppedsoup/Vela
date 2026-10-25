@@ -324,6 +324,14 @@ private const val B3D_FADE_MS = 350L
 // wall); at 0.25 a roof stays within ~1% of the palette on the dark map and ~3% under it on the
 // light one, and walls facing away from the light draw up to 25% darker.
 private const val B3D_LIGHT = 0.25f
+// Extrusions rise from this share of their height at z17 to full height at B3D_FULL_ZOOM.
+private const val B3D_GROW_FROM = 0.35f
+private const val B3D_FULL_ZOOM = 18.5f
+// Height tint (building3dColor): the palette color up to FROM meters, shaded by SHARE toward the
+// tint at FULL meters and above.
+private const val B3D_TINT_FROM_M = 12f
+private const val B3D_TINT_FULL_M = 90f
+private const val B3D_TINT_SHARE = 0.22f
 private const val NAV_OVL_FIRST_MS = 2500L // the first verdict of a drive, after the start cut has drawn
 private const val NAV_OVL_TICK_MS = 4000L // then how often the drive asks (a no-op inside one cell)
 
@@ -5279,11 +5287,12 @@ fun VelaMapView(
                 ensureSatellite(style, satelliteOn)
                 ensureNavRoadLabels(style, navMode, darkTheme, context.resources.displayMetrics.density, navLabelExclude)
                 // The traffic raster is Google's tile server; off entirely without Google, and
-                // not during a drive: the route line carries the traffic, and in the tilted
+                // not during a drive unless "Traffic overlay while driving" is on: the route line
+                // carries the traffic, and in the tilted
                 // drive view the raster's tiles load at a different zoom for every distance and
                 // expire as you go, so the colored bands along a highway grew, shrank and
                 // blinked (issue 733).
-                ensureTraffic(style, trafficOn && !navMode && !app.vela.ui.GoogleFree.on.value)
+                ensureTraffic(style, trafficOn && app.vela.ui.Traffic.shown(navMode))
                 ensureTransit(style, transitOn, accentMetro, accentTrains)
                 ensureTopography(style, topographyOn)
             }
@@ -5298,12 +5307,13 @@ fun VelaMapView(
                 val ensureKey = (if (satelliteOn) 1 else 0) or (if (trafficOn) 2 else 0) or
                     (if (transitOn) 4 else 0) or (if (topographyOn) 8 else 0) or
                     (if (navMode) 16 else 0) or (if (darkTheme) 32 else 0) or
-                    (if (accentMetro) 64 else 0) or (if (accentTrains) 128 else 0)
+                    (if (accentMetro) 64 else 0) or (if (accentTrains) 128 else 0) or
+                    (if (app.vela.ui.Traffic.inDrive.value) 256 else 0)
                 if (ensureKey != lastEnsureKey[0]) {
                     lastEnsureKey[0] = ensureKey
                     ensureNavRoadLabels(it, navMode, darkTheme, context.resources.displayMetrics.density, navLabelExclude)
                     ensureSatellite(it, satelliteOn)
-                    ensureTraffic(it, trafficOn && !navMode && !app.vela.ui.GoogleFree.on.value)
+                    ensureTraffic(it, trafficOn && app.vela.ui.Traffic.shown(navMode))
                     ensureTransit(it, transitOn, accentMetro, accentTrains)
                     ensureTopography(it, topographyOn)
                 }
@@ -5756,6 +5766,13 @@ private fun ensureLayers(style: Style, painted: Boolean) {
     // Since 2026-09-30 the intensity is B3D_LIGHT, not 0: low enough that roofs keep the palette
     // color, high enough that walls shade (user: "no shading", every tower one flat blob).
     runCatching { style.light?.setIntensity(B3D_LIGHT) }
+    // The light is fixed to the map, not the screen: as a drive turns, the walls facing the sun
+    // stay lit and the ones away from it stay shaded, so the city keeps one direction of light.
+    // Same angles as MapLibre's default (azimuth 210, polar 30), so a roof keeps the palette color.
+    runCatching {
+        style.light?.anchor = Property.ANCHOR_MAP
+        style.light?.position = org.maplibre.android.style.light.Position(1.15f, 210f, 30f)
+    }
     // FLAT vegetation, like Google (user 2026-07-11). Two parts. (1) Liberty's wetland +
     // pedestrian-plaza layers ship with a fill-PATTERN (fern hatch / dots), and setting
     // fill-pattern to an empty literal does NOT clear it on device (both themes tried - the
@@ -8848,10 +8865,31 @@ internal fun fragileGpuDefault(): Boolean =
                 android.os.Build.SOC_MANUFACTURER.contains("unisoc", ignoreCase = true)
             )
 
+/** The extrusion color for a palette's building color [base]: the base up to [B3D_TINT_FROM_M],
+ *  shaded toward [B3D_TINT_FULL_M] (darker on a light palette, lighter on a dark one) so a tall
+ *  tower stands apart from the low blocks around it instead of reading as one flat field. A
+ *  building with no height reads as the base. */
+internal fun building3dColor(base: String): Expression {
+    val c = android.graphics.Color.parseColor(base)
+    val r = android.graphics.Color.red(c); val g = android.graphics.Color.green(c); val b = android.graphics.Color.blue(c)
+    val light = (0.299 * r + 0.587 * g + 0.114 * b) > 128
+    // Light: toward a cool slate. Dark: toward a pale gray.
+    val (tr, tg, tb) = if (light) Triple(0x7a, 0x86, 0x99) else Triple(0xb8, 0xbe, 0xc8)
+    fun mix(a: Int, t: Int) = (a + (t - a) * B3D_TINT_SHARE).toInt().coerceIn(0, 255)
+    val tall = android.graphics.Color.rgb(mix(r, tr), mix(g, tg), mix(b, tb))
+    return Expression.interpolate(
+        Expression.linear(),
+        Expression.toNumber(Expression.coalesce(Expression.get("render_height"), Expression.literal(0f))),
+        Expression.stop(B3D_TINT_FROM_M, Expression.color(c)),
+        Expression.stop(B3D_TINT_FULL_M, Expression.color(tall)),
+    )
+}
+
 /** Google-style 3D building geometry, shared by all four palettes. Extrusions start a zoom level
  *  AFTER the flat footprints (z17 vs 16): at ~500ft Manhattan towers leaned over and BURIED the
  *  roads (user 2026-07-17) - that band now gets flat fills only, roads stay visible. From z17 the
- *  buildings grow in (30% -> full height by z19, Google's grow-as-you-approach), and the vertical
+ *  buildings grow in ([B3D_GROW_FROM] of their height -> full height by [B3D_FULL_ZOOM], Google's
+ *  grow-as-you-approach), and the vertical
  *  gradient shades extrusion sides darker toward the base so same-colored faces read as discrete
  *  buildings instead of one merged blob (the palettes had shut side shading off entirely).
  *  Starting 3D later is also the cheapest frame win in exactly the dense views that lag: one less
@@ -8863,15 +8901,15 @@ private fun applyBuilding3dGeometry(style: StyleLayers) {
         PropertyFactory.fillExtrusionHeight(
             Expression.interpolate(
                 Expression.linear(), Expression.zoom(),
-                Expression.stop(17f, Expression.product(Expression.get("render_height"), Expression.literal(0.3f))),
-                Expression.stop(19f, Expression.get("render_height")),
+                Expression.stop(17f, Expression.product(Expression.get("render_height"), Expression.literal(B3D_GROW_FROM))),
+                Expression.stop(B3D_FULL_ZOOM, Expression.get("render_height")),
             ),
         ),
         PropertyFactory.fillExtrusionBase(
             Expression.interpolate(
                 Expression.linear(), Expression.zoom(),
-                Expression.stop(17f, Expression.product(Expression.get("render_min_height"), Expression.literal(0.3f))),
-                Expression.stop(19f, Expression.get("render_min_height")),
+                Expression.stop(17f, Expression.product(Expression.get("render_min_height"), Expression.literal(B3D_GROW_FROM))),
+                Expression.stop(B3D_FULL_ZOOM, Expression.get("render_min_height")),
             ),
         ),
     )
@@ -8922,7 +8960,7 @@ internal fun applyLight(style: StyleLayers) {
     style.getLayer("building")?.setMinZoom(16f) // Google-like: footprints only when zoomed in close (~250ft scale), not at neighborhood zoom
     style.getLayer("building")?.setMaxZoom(24f)
     style.getLayer("building-3d")?.setProperties(
-        PropertyFactory.fillExtrusionColor("#e8e9ed"),
+        PropertyFactory.fillExtrusionColor(building3dColor("#e8e9ed")),
         PropertyFactory.fillExtrusionOpacity(1f),
     )
     applyBuilding3dGeometry(style)
@@ -9059,7 +9097,7 @@ internal fun applyDark(style: StyleLayers, p: DarkPalette = MODERN_DARK) {
     style.getLayer("building")?.setMinZoom(16f) // Google-like: footprints only when zoomed in close (~250ft scale)
     style.getLayer("building")?.setMaxZoom(24f) // re-open the maxzoom:14 clamp (see light path, which was collapsing the flat fill to empty)
     style.getLayer("building-3d")?.setProperties(
-        PropertyFactory.fillExtrusionColor(p.building),
+        PropertyFactory.fillExtrusionColor(building3dColor(p.building)),
         PropertyFactory.fillExtrusionOpacity(1f),
     )
     applyBuilding3dGeometry(style)
@@ -9160,7 +9198,7 @@ internal fun applyAmoled(style: StyleLayers) {
         PropertyFactory.fillOutlineColor("#14171A"),
     )
     style.getLayer("building-3d")?.setProperties(
-        PropertyFactory.fillExtrusionColor("#0A0C0F"),
+        PropertyFactory.fillExtrusionColor(building3dColor("#0A0C0F")),
     )
     val greens = setOf("park", "landcover_grass", "landcover_wood", "landuse_pitch", "landuse_track")
     style.layers.forEach { layer ->
@@ -9225,7 +9263,7 @@ internal fun applyClassicLight(style: StyleLayers) {
     style.getLayer("building")?.setMinZoom(16f) // Google-like: footprints only when zoomed in close (~250ft scale), not at neighborhood zoom
     style.getLayer("building")?.setMaxZoom(24f)
     style.getLayer("building-3d")?.setProperties(
-        PropertyFactory.fillExtrusionColor("#dde1e7"),
+        PropertyFactory.fillExtrusionColor(building3dColor("#dde1e7")),
         PropertyFactory.fillExtrusionOpacity(0.9f),
     )
     applyBuilding3dGeometry(style)
@@ -9311,7 +9349,7 @@ internal fun applyClassicDark(style: StyleLayers) {
     style.getLayer("building")?.setMinZoom(16f) // Google-like: footprints only when zoomed in close (~250ft scale), not at neighborhood zoom
     style.getLayer("building")?.setMaxZoom(24f)
     style.getLayer("building-3d")?.setProperties(
-        PropertyFactory.fillExtrusionColor("#383d45"),
+        PropertyFactory.fillExtrusionColor(building3dColor("#383d45")),
         PropertyFactory.fillExtrusionOpacity(0.9f),
     )
     applyBuilding3dGeometry(style)
