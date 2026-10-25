@@ -35,6 +35,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -162,12 +164,17 @@ private fun BoxScope.NavReportPolice(vm: MapViewModel) {
         return
     }
     if (navFabTopPx.intValue <= 0) return
-    // Two 56 dp steps up from the column's top: the compass has the first.
+    // Two 66 dp steps up from the column's top (the compass has the first). The column's top is
+    // in window pixels; this box's own top in the window is taken off, whatever insets it sits under.
     val stepPx = with(androidx.compose.ui.platform.LocalDensity.current) { (56.dp + 10.dp).roundToPx() }
+    val originY = androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    Box(
+        Modifier.matchParentSize().onGloballyPositioned { originY.intValue = it.positionInWindow().y.toInt() },
+    )
     app.vela.ui.nav.ReportPoliceFab(
         vm,
         Modifier.align(Alignment.TopEnd).padding(end = NAV_FAB_EDGE_DP)
-            .offset { IntOffset(0, (navFabTopPx.intValue - 2 * stepPx).coerceAtLeast(0)) }
+            .offset { IntOffset(0, (navFabTopPx.intValue - originY.intValue - 2 * stepPx).coerceAtLeast(0)) }
             .popIn(),
     )
 }

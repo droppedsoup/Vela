@@ -47,8 +47,11 @@ object PoliceReports {
 
     /** The live reports now, dropping any that have aged out since the last change. */
     fun live(): List<PoliceReport> {
-        val now = PoliceAlerts.live(reports.value, System.currentTimeMillis(), lifetimeMs())
-        if (now.size != reports.value.size) synchronized(lock) { reports.value = now; save(now) }
+        val cur = reports.value
+        val now = PoliceAlerts.live(cur, System.currentTimeMillis(), lifetimeMs())
+        // The same list object while nothing aged out: callers key their work on its identity.
+        if (now.size == cur.size) return cur
+        synchronized(lock) { reports.value = now; save(now) }
         return now
     }
 
