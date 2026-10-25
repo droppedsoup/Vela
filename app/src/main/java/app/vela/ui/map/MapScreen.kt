@@ -1325,7 +1325,7 @@ fun MapScreen(
         // #297 is already about landscape being crowded, and adding a permanent strip there would
         // make that worse rather than better.
         state.routeBar?.let { bar ->
-            if (state.navigating && !landscapeChrome && !pipUi && !bar.isEmpty) {
+            if (state.navigating && !landscapeChrome && !pipUi && bar.shown) {
                 app.vela.ui.nav.RouteBarStrip(
                     model = bar,
                     modifier = Modifier

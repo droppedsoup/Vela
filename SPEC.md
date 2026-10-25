@@ -1693,7 +1693,9 @@ LADDER_SNAP_RESERVE_MS       6_000   an escalated fetch stops waiting for Google
   run more than 120 degrees off it (`RouteGeometry.startsAgainst`) is set aside when the open
   router answered, so the hybrid cannot tell a moving car to turn around. `forwardChoice`
   limits what that may cost: a forward Google route within `FORWARD_MAX_EXTRA_S` (180 s) or
-  `FORWARD_MAX_EXTRA_SHARE` (8 percent) of the best one, else the open router's route when it
+  `FORWARD_MAX_EXTRA_SHARE` (8 percent) of the best one, whichever is more but never over
+  `FORWARD_MAX_EXTRA_CAP_S` (300 s; on a 16-hour trip the share alone allowed 77 minutes and a
+  missed turn got a long way round), else the open router's route when it
   is that close without traffic, else the best route, turn-around and all. The open router's
   time is first put on Google's clock (its length at the best route's average speed, factor
   held to 0.5 to 3), because its own free-flow time runs fast.
@@ -5409,7 +5411,9 @@ the catalog, the ones switched off included; a pick runs that search. The one-bu
   safe edge. The speed box and the Re-center pill sit just right of the bar's measured right edge
   (`navBarRightPx`). The step list's height floor is 64 dp (200 dp in portrait), so it stops
   under the banner.
-- The route bar (`RouteBarStrip`) draws in portrait only and never in PiP. It shows the next
+- The route bar (`RouteBarStrip`) draws in portrait only and never in PiP, whenever more than
+  `RouteBar.MIN_REMAINING_M` (400 m) is left (`Model.shown`), marks or not: an empty bar is still
+  the road ahead and the scrub handle. It shows the next
   `RouteBar.WINDOW_M` (5,000 m): scaled to a long trip, nearby marks collapse into one pixel.
   Congestion is painted on the track by level; a light and a stop sign are the map's own
   bitmaps (`trafficLightBitmap`, `stopSignBitmap`) on the track, `MINI` (16 dp) tall; cameras,
@@ -5417,8 +5421,13 @@ the catalog, the ones switched off included; a pick runs that search. The one-bu
 - Route bar scrub (`RouteScrub`): a finger anywhere on the bar puts its arrow there and drags it,
   and D-pad up and down step it a tenth of the bar (the bar is a focus stop). While scrubbed the
   bar stands for the whole trip: the bottom is the car, the top the destination, and its label
-  reads the distance left (`remainingM`). The car is drawn that share of the rest of the route
-  ahead of its place (`NavPuck.scrubM`), and the follow camera rides with it in its drive framing, so sliding up
+  reads the distance left (`remainingM`). The car is drawn ahead of its place (`NavPuck.scrubM`)
+  by the square of the arrow's share times the distance left (`RouteScrub.aheadM`), so the lower
+  bar moves it finely near the car and the top half races out: on a 1,800 km trip a tenth of the
+  way up is 18 km and half way 450 km. While the scrubbed car moves faster than 60 m/s the follow
+  camera pulls back by 0.65 zoom levels per doubling (`RouteScrub.zoomOut`, at most 7), its speed
+  eased over 0.35 s, so a run across a long trip shows the country instead of tiles that cannot
+  load. The follow camera rides with the car in its drive framing, so sliding up
   drives the car up the route and sliding down brings it back. The lead eases toward the finger
   over `SCRUB_FOLLOW_S` (0.12 s) and back to nothing over `SCRUB_RETURN_S` (0.45 s). A car not
   yet on the route (parked at the start) is scrubbed from the engine's progress. A scrub attaches

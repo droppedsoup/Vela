@@ -40,6 +40,10 @@ object RouteBar {
         val reachesDestination: Boolean,
     ) {
         val isEmpty: Boolean get() = bands.isEmpty() && pins.isEmpty()
+
+        /** Whether the bar draws: whenever more than [MIN_REMAINING_M] is left, marks or not. An
+         *  empty bar is still the road ahead, and its arrow is the scrub handle (`RouteScrub`). */
+        val shown: Boolean get() = spanM >= MIN_REMAINING_M
     }
 
     /** Marks closer together than this along the route collapse into one, so a junction with a
@@ -47,7 +51,7 @@ object RouteBar {
     private const val PIN_MERGE_M = 60.0
 
     /** Below this the bar would be a sliver of noise; the banner already covers the last stretch. */
-    private const val MIN_REMAINING_M = 400.0
+    const val MIN_REMAINING_M = 400.0
 
     /**
      * How much road the bar shows: the next 5 km, not the whole trip.

@@ -48,7 +48,7 @@ import app.vela.ui.formatDistance
  */
 @Composable
 fun RouteBarStrip(model: RouteBar.Model, modifier: Modifier = Modifier) {
-    if (model.isEmpty) return
+    if (!model.shown) return
     val track = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f)
     val chip = MaterialTheme.colorScheme.surface
     val ink = MaterialTheme.colorScheme.onSurface

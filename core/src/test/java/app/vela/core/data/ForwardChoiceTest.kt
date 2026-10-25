@@ -62,6 +62,16 @@ class ForwardChoiceTest {
         assertEquals(listOf(on), RouteGeometry.forwardChoice(listOf(back, on), north, null))
     }
 
+    @Test fun `on a long trip the allowance stops at five minutes`() {
+        // Sixteen hours out: 8 percent would allow 77 minutes, so a way on 20 minutes slower
+        // used to win over the quick way back to the route.
+        val back = route(north = false, 900.0, 960.0); val on = route(north = true, 915.0, 980.0)
+        assertSame(back, RouteGeometry.forwardChoice(listOf(back, on), north, null).first())
+        // Five minutes slower is still worth not turning around.
+        val near = route(north = true, 903.0, 965.0)
+        assertEquals(listOf(near), RouteGeometry.forwardChoice(listOf(back, near), north, null))
+    }
+
     @Test fun `the open router's time is put on Google's clock before it is compared`() {
         // Best: 2 km in 40 min starting back. The way round is 2.8 km, which the open router
         // calls 39 min: a minute "shorter" raw, 16 min longer at the best route's speed.

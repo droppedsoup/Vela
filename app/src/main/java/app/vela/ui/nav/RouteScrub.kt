@@ -29,6 +29,18 @@ object RouteScrub {
 
     val active: Boolean get() = fraction.value != null
 
+    /** Meters ahead for the arrow at [f] with [leftM] of the trip left. Squared, so the lower bar
+     *  moves the car finely near where it is and the top half races out to the destination: on
+     *  a 1,800 km trip, a tenth of the way up is 18 km, half way is 450 km. */
+    fun aheadM(f: Float, leftM: Double): Double = (f.toDouble() * f) * leftM
+
+    /** Zoom levels the follow camera pulls back while the scrubbed car moves at [speedMps]: none
+     *  at a driving pace, about 4 at 5 km/s, at most [MAX_ZOOM_OUT]. */
+    fun zoomOut(speedMps: Double): Double =
+        if (speedMps <= 60.0) 0.0 else (kotlin.math.ln(speedMps / 60.0) / kotlin.math.ln(2.0) * 0.65).coerceAtMost(MAX_ZOOM_OUT)
+
+    const val MAX_ZOOM_OUT = 7.0
+
     fun move(f: Float) {
         fraction.value = f.coerceIn(0f, 1f)
         releasedAt.longValue = 0L

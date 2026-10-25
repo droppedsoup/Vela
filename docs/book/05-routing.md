@@ -267,7 +267,8 @@ is set aside when the open router answered. Without these, a reroute computed ju
 missed turn says "make a U-turn", and so does the next one. A planning fetch sends no heading.
 
 Setting a route aside has a price limit (`RouteGeometry.forwardChoice`). A forward Google route
-is taken only when it is within 3 minutes, or 8 percent, of the best one. With none, the open
+is taken only when it is within 3 minutes, or 8 percent, of the best one, and never more than
+5 minutes: on a 16-hour trip 8 percent is over an hour. With none, the open
 router's own route is used when it is that close to the best route's time without traffic: it
 was asked with the heading and usually goes round the block. When going on costs more than that
 either way, the best route stands and the car is told to turn around. Without the limit a

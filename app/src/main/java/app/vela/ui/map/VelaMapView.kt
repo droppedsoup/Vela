@@ -3258,13 +3258,18 @@ fun VelaMapView(
             // The bar stands for the whole trip while scrubbed: its top is the destination.
             val scrubBase = if (navPuck.engaged) navPuck.progressM else app.vela.ui.nav.RouteScrub.traveledM
             val scrubLeft = ((if (routeCum.isNotEmpty()) routeCum.last() else 0.0) - scrubBase).coerceAtLeast(0.0)
-            val scrubTarget = if (navModeHolder.value) (app.vela.ui.nav.RouteScrub.fraction.value ?: 0f) * scrubLeft else 0.0
+            val scrubTarget = if (navModeHolder.value) app.vela.ui.nav.RouteScrub.aheadM(app.vela.ui.nav.RouteScrub.fraction.value ?: 0f, scrubLeft) else 0.0
+            val scrubBefore = navPuck.scrubM
             if (scrubTarget != navPuck.scrubM) {
                 val tau = if (app.vela.ui.nav.RouteScrub.active) SCRUB_FOLLOW_S else SCRUB_RETURN_S
                 navPuck.scrubM += (scrubTarget - navPuck.scrubM) * (1f - kotlin.math.exp(-dtEase / tau))
                 if (kotlin.math.abs(scrubTarget - navPuck.scrubM) < 0.3) navPuck.scrubM = scrubTarget
                 idleFrames = 0
             }
+            // How fast the scrubbed car is moving (m/s, eased): the follow camera climbs with it
+            // (scrubZoomOut below), so a run across a long trip shows the country, not blank tiles.
+            val scrubVel = if (dtT > 0.0) kotlin.math.abs(navPuck.scrubM - scrubBefore) / dtT.coerceAtLeast(0.001) else 0.0
+            navPuck.scrubSpeed += (scrubVel - navPuck.scrubSpeed) * (1.0 - kotlin.math.exp(-dtEase / 0.35))
             val scrubbing = navPuck.scrubM > 0.0 || app.vela.ui.nav.RouteScrub.active
             if ((navPuck.engaged || scrubbing) && routePolyline.size >= 2) {
                 // Kalman-predict the speed each frame: fold the MEASURED forward acceleration
@@ -3443,7 +3448,8 @@ fun VelaMapView(
                     // the speed's and never below the floor (turnZoomMin). The same ease as the speed zoom.
                     val turnZoomRaw = if (app.vela.ui.ZoomToTurn.on.value && !navNorthUpHolder.value && navUserZoom[0].isNaN())
                         navPuck.framer.turnZoom(context, cam.height.toInt(), pt, tiltForTurn) else Double.NaN
-                    val tgtZoom = if (!navUserZoom[0].isNaN()) navUserZoom[0] else NavFraming.withTurn(speedZoom, turnZoomRaw, NavFraming.turnFloor())
+                    val tgtZoom = (if (!navUserZoom[0].isNaN()) navUserZoom[0] else NavFraming.withTurn(speedZoom, turnZoomRaw, NavFraming.turnFloor())) -
+                        app.vela.ui.nav.RouteScrub.zoomOut(navPuck.scrubSpeed)
                     // The camera turns toward the maneuver it frames, up to 45 degrees off the
                     // heading, so a far turn off to the side sits in the frame (NavFraming.turnYaw).
                     val navYaw = NavTurnTarget.point?.let { t -> NavFraming.turnYaw(navPuck.displayBearing.toDouble(), bearingDeg(pt, t).toDouble(), speedZoom, turnZoomRaw) } ?: 0.0
@@ -9573,6 +9579,7 @@ private class NavPuck {
     var engaged = false           // currently following the route (snapped)
     var progressM = 0.0           // displayed meters along the route (what's drawn)
     var scrubM = 0.0              // how far ahead of progressM the route bar scrub draws the car
+    var scrubSpeed = 0.0          // how fast scrubM is changing, m/s, eased (the camera climbs with it)
     var targetM = 0.0             // latest fix's meters along the route (where we're heading)
     var targetAtMs = 0L           // elapsedRealtime() the target was set — for dead reckoning
     var speed = 0.0               // m/s — the KALMAN speed (GPS ⊕ accelerometer), see [kalman]

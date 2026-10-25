@@ -1000,8 +1000,11 @@ object RouteGeometry {
 
     /** Going on instead of turning around may cost this much over Google's best route... */
     const val FORWARD_MAX_EXTRA_S = 180.0
-    /** ...or this share of the best route's time, when that is more. */
+    /** ...or this share of the best route's time, when that is more... */
     const val FORWARD_MAX_EXTRA_SHARE = 0.08
+    /** ...and never more than this. On a 16-hour trip the share alone allowed 77 minutes, so a
+     *  missed turn was answered with a long way round instead of the quick way back. */
+    const val FORWARD_MAX_EXTRA_CAP_S = 300.0
 
     /**
      * Which of Google's routes a reroute may follow, given the way the car is going. Google is
@@ -1024,7 +1027,7 @@ object RouteGeometry {
         val best = google.minByOrNull { eta(it) }!!
         val forward = google.filterNot { startsAgainst(it.polyline, headingDeg) }
         if (best in forward) return forward
-        val allowance = maxOf(FORWARD_MAX_EXTRA_S, eta(best) * FORWARD_MAX_EXTRA_SHARE)
+        val allowance = maxOf(FORWARD_MAX_EXTRA_S, eta(best) * FORWARD_MAX_EXTRA_SHARE).coerceAtMost(FORWARD_MAX_EXTRA_CAP_S)
         val affordable = forward.filter { eta(it) - eta(best) <= allowance }
         if (affordable.isNotEmpty()) return affordable
         if (openSeconds != null && openSeconds > 0.0) {
