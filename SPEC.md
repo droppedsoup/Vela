@@ -4064,6 +4064,13 @@ A version query on `BAKED_URL` moves the map cache off old tiles after a rebake.
   MapLibre scales the z16 tile, whose lines Google draws thin, so the layer reads the same
   everywhere; z17 and z18 requests were up to 16 per z16 tile, Google throttled them, and the
   tiles that never came left far-out tiles stretched into fat bands beside bare patches.
+- Tiles are asked at twice the scale (`!5f2`, 512 px in a 256 px slot), so past the z16 cap and
+  under tilt the lines stay sharp instead of stretching into soft bands.
+- It shows slow traffic only. `TrafficTileFilter`, an interceptor in MapLibre's HTTP client, makes
+  the free-flow green transparent as each tile arrives: a pixel whose green leads its red by more
+  than 30 and is at least its blue. Yellow, red and dark red have more red than green and stay. On
+  a z15 tile over a busy freeway the filter removed 16,479 pixels and kept 1,478, all yellow and
+  red. A tile that does not decode passes through unchanged.
 - It carries a 900 ms `raster-fade-duration`. Google's tiles expire while the map is open, and
   at the default 300 ms a replaced tile reads as the whole layer flickering.
 - It is not drawn during a drive (`navMode`) unless "Traffic overlay while driving"

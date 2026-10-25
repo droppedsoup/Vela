@@ -22,7 +22,8 @@ What Vela Maps does today, one line per feature. How each one works is in [SPEC.
   and where the place icons come from, the chosen ones ringed, with the Google-free switch under
   them. "Show layers button" hides it. The live traffic overlay is on by default and shows while
   browsing; during a drive the route line carries the traffic and the overlay is hidden, unless
-  "Traffic overlay while driving" is on.
+  "Traffic overlay while driving" is on. The overlay marks slow and stopped traffic in yellow and
+  red, sharp at any zoom, and leaves roads that flow freely uncolored.
 - "Highlight transit lines" draws subway, tram and train lines in their own colors. Lines for
   places you have looked at are kept on the phone, so they show at once and with no signal.
 - Traffic lights, stop signs, railway crossings and speed humps show at close zoom.

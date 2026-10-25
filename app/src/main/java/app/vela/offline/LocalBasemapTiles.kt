@@ -40,6 +40,7 @@ object LocalBasemapTiles : Interceptor {
                     .dispatcher(okhttp3.Dispatcher().apply { maxRequestsPerHost = 20 })
                     .addInterceptor(this)
                     .addInterceptor(StreamedPmtiles) // a streamed archive's tiles, read by Vela, not by MapLibre's PMTiles path
+                    .addInterceptor(app.vela.ui.map.TrafficTileFilter) // the traffic overlay keeps slow traffic only
                     // After the local hooks: a tile answered from a file or an archive is not proof of a network.
                     .addInterceptor(app.vela.core.net.NetHealth.interceptor)
                     .addInterceptor(app.vela.diag.NetCount) // after the local hook too: only what reaches the network

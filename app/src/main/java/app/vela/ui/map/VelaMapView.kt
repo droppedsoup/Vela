@@ -510,10 +510,12 @@ private const val TRANSIT_SUBWAY = "#12B5A5" // subway / light rail / tram — t
 // incidents) — the web map's own `/maps/vt` tile, which is a public, keyless PNG
 // on www.google.com (the same host we already scrape). The trimmed `pb` (no map
 // version epoch, so it doesn't rot): `!2straffic` = the traffic layer, `!1e2` =
-// overlay. Standard XYZ tile coords (`!1i{z}!2i{x}!3i{y}`).
+// overlay. Standard XYZ tile coords (`!1i{z}!2i{x}!3i{y}`). `!5f2` asks for the tile at twice
+// the scale (512 px for a 256 px slot), so the lines stay sharp when the map zooms past the
+// source's z16 cap and tilts; TrafficTileFilter takes the free-flow green out as each arrives.
 internal const val TRAFFIC_TILES =
     "https://www.google.com/maps/vt/pb=!1m4!1m3!1i{z}!2i{x}!3i{y}!2m9!1e2!2straffic!3i999999" +
-        "!4m2!1sincidents!2s1!4m2!1sincidents_text!2s1!3m8!2sen!3sus!5e1105!12m4!1e68!2m2!1sset!2sRoadmap!4e0!5m1!1e0"
+        "!4m2!1sincidents!2s1!4m2!1sincidents_text!2s1!3m8!2sen!3sus!5e1105!12m4!1e68!2m2!1sset!2sRoadmap!4e0!5m2!1e0!5f2"
 
 /** A tappable search-result pin on the map. [prominence] (0 = unknown/low) drives the ambient dot's
  *  size + keep-distance so anchor stores read bigger and show from farther, Google-style. */
