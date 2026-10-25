@@ -48,3 +48,6 @@ core/libs/*.jar
 # Python bytecode
 __pycache__/
 *.pyc
+
+# A local build's extra assets (the bundled voice, docs/BUILDING.md); never committed
+app/bundled-assets/

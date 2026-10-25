@@ -4948,6 +4948,14 @@ Piper model (`PiperSynth` behind the `:core` `NeuralSynth` seam). About 40 catal
 to `filesDir/piper/<id>/`; the installed set is derived from the filesystem, so a partial
 download self-heals. The selection is `voice_model`, the speaker per voice `voice_speaker_<id>`.
 
+A local build can carry the default voice (`VelaPiper.DEFAULT_VOICE_ID`) as
+`assets/voice/<id>.tar.bin`, the sherpa archive under a neutral extension, from the gitignored
+`app/bundled-assets/` folder (docs/BUILDING.md). On the first launch with no voice installed,
+`MapViewModel.seedBundledVoice` unpacks it (`KokoroInstaller.installFromAsset`, its own temp
+paths) and selects it unless a system engine was picked; pref `bundled_voice_seeded` keeps it
+from coming back after a delete. CI never fills the folder: the voice's training data is
+CC BY-NC-SA 4.0, which a GPLv3 release cannot carry.
+
 - R8 must keep `com.k2fsa.sherpa.onnx.**`: JNI resolves classes by original name.
 - `app/voice/PlaceDictionary` swaps the `en_dict` in an English voice's `espeak-ng-data` for the
   app's (`assets/pronunciation/en_dict`, 228 KB, version = the first 16 hex of its SHA-256)

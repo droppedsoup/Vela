@@ -34,6 +34,21 @@ done
 
 If `.github/workflows/ci.yml` names a newer file than this page does, trust the workflow.
 
+### A build with the voice inside
+
+A build for your own phone can carry the default voice, so spoken directions work on the first
+drive with no download. The voice's training data is CC BY-NC-SA 4.0: keep such a build to
+yourself, and never put it on a release.
+
+```bash
+mkdir -p app/bundled-assets/voice
+curl -fSL -o app/bundled-assets/voice/en_US-hfc_female-medium.tar.bin \
+  https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-hfc_female-medium.tar.bz2
+```
+
+The folder is gitignored. The APK grows by about 67 MB, and the first launch unpacks the voice
+and selects it (SPEC 9.1).
+
 ```bash
 # debug build (compile check / local install)
 ./gradlew :app:assembleDebug

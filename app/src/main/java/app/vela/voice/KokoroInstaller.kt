@@ -68,6 +68,30 @@ class KokoroInstaller @Inject constructor(
         }
     }
 
+    /** Unpack a voice archive shipped inside the APK ([asset], a `.tar.bz2` under a neutral
+     *  extension) into [destDir], as [download] does with a downloaded one. Its own temp paths, so
+     *  it cannot collide with a download running at the same time. */
+    suspend fun installFromAsset(asset: String, destDir: File): Boolean = withContext(Dispatchers.IO) {
+        val tmp = File(context.filesDir, "voice.asset.tmp")
+        val staging = File(context.filesDir, "voice.asset.staging")
+        try {
+            context.assets.open(asset).use { input -> tmp.outputStream().use { input.copyTo(it, 1 shl 16) } }
+            staging.deleteRecursively(); staging.mkdirs()
+            extractTar(tmp, staging)
+            val inner = staging.listFiles()?.firstOrNull { it.isDirectory } ?: staging
+            destDir.deleteRecursively()
+            if (!inner.renameTo(destDir)) inner.copyRecursively(destDir, overwrite = true)
+            true
+        } catch (t: Throwable) {
+            android.util.Log.w("VelaVoice", "bundled voice unpack failed: ${t.message}")
+            destDir.deleteRecursively()
+            false
+        } finally {
+            tmp.delete()
+            staging.deleteRecursively()
+        }
+    }
+
     /** Stream [url] to [out], reporting progress mapped into the [base, base+span] slice of the bar.
      *  [active] is checked per chunk - a user cancel aborts the read within ~64 KB. */
     private fun stream(url: String, out: File, sizeEst: Long, base: Float, span: Float, active: () -> Boolean, onProgress: (Float) -> Unit): Boolean =

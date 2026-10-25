@@ -765,6 +765,7 @@ class MapViewModel @Inject constructor(
             }
         }
         voice.init(savedEngine) // null → default system TTS; also warms the engine list for Settings
+        seedBundledVoice(savedRaw)
         if (savedEngine != null) {
             val label = velaLabel(savedEngine)
                 ?: voice.availableEngines().firstOrNull { it.packageName == savedEngine }?.label ?: savedEngine
@@ -8154,6 +8155,30 @@ class MapViewModel @Inject constructor(
             viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                 dir.deleteRecursively()
                 withContext(kotlinx.coroutines.Dispatchers.Main) { refreshInstalledVoices() }
+            }
+        }
+    }
+
+    /** A build that carries the default voice (assets/voice/<id>.tar.bin, docs/BUILDING.md) unpacks
+     *  it once, the first launch with no voice installed, and selects it as a first download would,
+     *  unless a system engine was picked ([savedRaw]). Done once: a voice the user deletes later is
+     *  not put back. */
+    private fun seedBundledVoice(savedRaw: String?) {
+        // Called from init, above the settingsPrefs declaration: a raw read.
+        val prefs = appContext.getSharedPreferences("vela_settings", Context.MODE_PRIVATE)
+        val key = "bundled_voice_seeded"
+        val id = VelaPiper.DEFAULT_VOICE_ID
+        val asset = "voice/$id.tar.bin"
+        if (prefs.getBoolean(key, false)) return
+        if (VelaPiper.installedVoiceIds(appContext).isNotEmpty()) return
+        if (appContext.assets.list("voice")?.contains("$id.tar.bin") != true) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = kokoroInstaller.installFromAsset(asset, VelaPiper.modelDirFor(appContext, id))
+            if (ok) prefs.edit().putBoolean(key, true).apply()
+            withContext(Dispatchers.Main) {
+                val systemPicked = savedRaw != null && !savedRaw.startsWith("vela.")
+                if (ok && VelaPiper.isVoiceReady(appContext, id) && !systemPicked) selectVoice(id, audition = false)
+                else refreshInstalledVoices()
             }
         }
     }

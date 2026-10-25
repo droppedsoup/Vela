@@ -208,6 +208,13 @@ android {
         compose = true
         buildConfig = true
     }
+    // A local build can carry the default voice (docs/BUILDING.md, "A build with the voice inside"):
+    // files placed in app/bundled-assets/ (gitignored) are packed as assets, and the app unpacks
+    // assets/voice/<id>.tar.bin on first launch (SPEC 9.1). CI never fills the folder: the voice's
+    // training data is CC BY-NC-SA, which a GPLv3 release cannot carry.
+    if (file("bundled-assets").isDirectory) {
+        sourceSets["main"].assets.directories.add("bundled-assets")
+    }
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
         // The neural-TTS runtime (ONNX Runtime + sherpa-onnx, from the vendored AAR) ships its .so
