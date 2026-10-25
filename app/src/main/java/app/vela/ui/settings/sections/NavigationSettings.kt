@@ -38,6 +38,8 @@ import app.vela.ui.settings.GroupDivider
 import app.vela.ui.settings.settingsAnchor
 import app.vela.ui.settings.Hint
 import app.vela.ui.settings.SelectableRow
+import app.vela.ui.settings.SubHead
+import androidx.compose.ui.res.pluralStringResource
 import app.vela.ui.settings.SettingsGroup
 import app.vela.ui.settings.SettingsScaffold
 import app.vela.ui.settings.ToggleRow
@@ -447,9 +449,44 @@ internal fun NavigationSettingsScreen(vm: MapViewModel, onBack: () -> Unit) {
                 onCheckedChange = { app.vela.ui.BridgeAlert.set(context, it) },
                 hint = stringResource(R.string.settings_bridge_openings_hint),
             )
+            GroupDivider()
+            PoliceReportRows()
         }
         Spacer(Modifier.height(8.dp))
         LiveRechecksGroup(vm)
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+/** Police reports (SPEC 4.9, Police reports): the alert switch, how long a report lasts, and a
+ *  way to clear them. Reports stay on this phone. */
+@Composable
+private fun PoliceReportRows() {
+    val context = LocalContext.current
+    ToggleRow(
+        label = stringResource(R.string.settings_police_alerts),
+        checked = app.vela.data.PoliceReports.alerts.value,
+        onCheckedChange = { app.vela.data.PoliceReports.setAlerts(context, it) },
+        hint = stringResource(R.string.settings_police_alerts_hint),
+    )
+    SubHead(stringResource(R.string.settings_police_lifetime))
+    app.vela.data.PoliceReports.LIFETIME_CHOICES.forEach { min ->
+        SelectableRow(
+            label = when {
+                min == 0 -> stringResource(R.string.settings_police_lifetime_forever)
+                min < 60 -> pluralStringResource(R.plurals.settings_police_lifetime_minutes, min, min)
+                min < 1440 -> pluralStringResource(R.plurals.settings_police_lifetime_hours, min / 60, min / 60)
+                else -> pluralStringResource(R.plurals.settings_police_lifetime_days, min / 1440, min / 1440)
+            },
+            selected = app.vela.data.PoliceReports.lifetimeMin.intValue == min,
+            onClick = { app.vela.data.PoliceReports.setLifetime(context, min) },
+        )
+    }
+    val count = app.vela.data.PoliceReports.reports.value.size
+    if (count > 0) {
+        androidx.compose.material3.TextButton(
+            onClick = { app.vela.data.PoliceReports.clear() },
+            modifier = Modifier.padding(horizontal = 8.dp).dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+        ) { Text(pluralStringResource(R.plurals.settings_police_clear, count, count)) }
     }
 }

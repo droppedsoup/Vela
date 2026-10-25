@@ -5293,12 +5293,14 @@ fun VelaMapView(
                 // expire as you go, so the colored bands along a highway grew, shrank and
                 // blinked (issue 733).
                 ensureTraffic(style, trafficOn && app.vela.ui.Traffic.shown(navMode))
+                PoliceLayer.apply(style, app.vela.data.PoliceReports.reports.value)
                 ensureTransit(style, transitOn, accentMetro, accentTrains)
                 ensureTopography(style, topographyOn)
             }
         } else {
             styleRef?.let {
                 applyData(map, it, context, darkTheme, ambientCoversView, routePolyline, routeColor, routeDashed, routeTrafficSpans, alternates, altColor, markers, ambientPois, trafficControls, flockCameras, speedCameras, transitStops, mePaint, meBearing, myAccuracyM, locationStale, previewTarget, routeProgress, navMode, navDriveMode, parkingSpot, savedPins, poisEnabled, svPose)
+                PoliceLayer.apply(it, app.vela.data.PoliceReports.reports.value) // identity-gated inside
                 // AUDIT FIX 3e (2026-07-15): the ensure* helpers are idempotent but each call
                 // probes the style over JNI (getLayer/getSource) - per recomposition, that's
                 // four probe sets during every camera flight for nothing. They only need to run

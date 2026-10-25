@@ -212,6 +212,10 @@ What Vela Maps does today, one line per feature. How each one works is in [SPEC.
 - "Bridge openings" in the Netherlands says when a movable bridge on your route is open, or due
   to open as you reach it. From NDW's open road data. On by default.
 - Plate camera data ships with the app, so it works offline.
+- "Report police" is a blue button during a drive and in driving mode. A report shows as a badge
+  on the map, and "Police reported ahead" is shown and spoken when a reported spot comes up on
+  the route or the road ahead. Reports stay on the phone and last an hour by default ("Keep a
+  police report for", up to until cleared). "Police reports" in Road alerts turns the warning off.
 
 ## Offline
 

@@ -160,6 +160,7 @@ internal class NavController(
                     routeCamMeters = emptyList(); routeCamKey = null; spokenCams = emptySet()
                     app.vela.car.CarBridge.clear()
                     clearRouteFlock()
+                    clearRoutePolice()
                     clearRouteBridges()
                     speeding.reset()
                 }
@@ -177,7 +178,7 @@ internal class NavController(
                     if (ns.navigating && toStop != null) app.vela.ui.nav.NavLegFigures.Leg(toStop, ns.nav.remainingDistance, ns.nav.remainingDuration) else null
                 // Speak an approach warning for a camera coming up (issue #229). Cheap per tick:
                 // a scan of a short list; the projection was done once when the route landed.
-                if (ns.navigating) { maybeWarnCamera(ns); maybeWarnFlock(ns); maybeWarnSpeeding(); maybeWarnBridge(ns) }
+                if (ns.navigating) { maybeWarnCamera(ns); maybeWarnFlock(ns); maybeWarnPolice(ns); maybeWarnSpeeding(); maybeWarnBridge(ns) }
                 _state.update {
                     it.copy(
                         navigating = ns.navigating,
@@ -1242,6 +1243,59 @@ internal class NavController(
         app.vela.car.CarBridge.toast(msg)
     }
 
+    // Police reports on the CURRENT route (SPEC 4.9, Police reports): one spot per group, as
+    // (first report's id, meters along the route), and the spots already announced. Projected
+    // again whenever the route or the report list changes; announcements are kept by id, so a
+    // report added mid-drive does not re-announce the ones already heard.
+    private var policeRoute: app.vela.core.model.Route? = null
+    private var policeList: List<app.vela.core.nav.PoliceReport>? = null
+    private var routePolice: List<Pair<String, Double>> = emptyList()
+    private var alertedPolice: Set<String> = emptySet()
+
+    private fun clearRoutePolice() {
+        policeRoute = null; policeList = null; routePolice = emptyList(); alertedPolice = emptySet()
+    }
+
+    /** Announce the police report coming up on the route, once each: the card, the voice (or the
+     *  chime in "Alerts only") and the car. Local work only: the reports are on the phone. */
+    private fun maybeWarnPolice(ns: app.vela.core.nav.NavSession.State) {
+        if (!app.vela.data.PoliceReports.alerts.value) { if (policeRoute != null) clearRoutePolice(); return }
+        val vs = _state.value
+        if (vs.replaying && !vs.demoDriving) return
+        val route = navSession.state.value.route ?: return
+        val reports = app.vela.data.PoliceReports.live()
+        if (route !== policeRoute || reports !== policeList) {
+            // A different route resets what was announced: its distances start again from zero.
+            if (route !== policeRoute) alertedPolice = emptySet()
+            policeRoute = route; policeList = reports
+            val poly = route.polyline
+            routePolice = if (reports.isEmpty() || poly.size < 2) emptyList()
+            else app.vela.core.nav.PoliceAlerts.alongRoute(poly, app.vela.core.nav.RouteProjection.cumulative(poly), reports)
+            if (routePolice.isNotEmpty()) diag.record("police", "${routePolice.size} police report spot(s) on route", "reports")
+        }
+        if (routePolice.isEmpty()) return
+        val id = app.vela.core.nav.PoliceAlerts.due(routePolice, ns.nav.traveledM, (vs.mySpeed ?: 0f).toDouble(), alertedPolice) ?: return
+        alertedPolice = alertedPolice + id
+        announcePolice()
+    }
+
+    private fun announcePolice() {
+        val msg = appContext.getString(R.string.nav_police_ahead)
+        android.util.Log.i("VelaPolice", "police reported ahead")
+        host.flashStatus(msg, 8000L)
+        alert(msg)
+        app.vela.car.CarBridge.toast(msg)
+    }
+
+    /** Report police where the car is now, heading the way it is going (the Report button). */
+    fun reportPolice(): Boolean {
+        val st = _state.value
+        val here = st.myLocation ?: return false
+        app.vela.data.PoliceReports.add(here, st.myBearing?.toDouble())
+        host.flashStatus(appContext.getString(R.string.nav_police_reported), 4000L)
+        return true
+    }
+
     /** A GPS fix in driving mode with no drive running (issue #727): the speeding alert runs from
      *  the fix stream, as it runs per nav tick during a drive, and the camera alerts run against
      *  a look ahead along the course ([scanAhead]), since there is no route to project onto. */
@@ -1250,13 +1304,14 @@ internal class NavController(
         maybeWarnSpeeding()
         val wantCams = app.vela.ui.SpeedCams.on.value && app.vela.ui.SpeedCamWarn.on.value
         val wantFlock = app.vela.ui.FlockNavAlert.any
-        if (!wantCams && !wantFlock) return
+        val wantPolice = app.vela.data.PoliceReports.alerts.value && app.vela.data.PoliceReports.reports.value.isNotEmpty()
+        if (!wantCams && !wantFlock && !wantPolice) return
         val speed = (_state.value.mySpeed ?: 0f).toDouble()
         if (bearingDeg == null || speed < app.vela.core.nav.CameraAlerts.MOVING_FLOOR_MPS) return
         val now = android.os.SystemClock.elapsedRealtime()
         val from = driveScanFrom
         if (driveScanJob?.isActive != true && (from == null || now - driveScanAtMs >= DRIVE_SCAN_MS || from.distanceTo(here) >= DRIVE_SCAN_M)) {
-            scanAhead(here, bearingDeg, wantCams, wantFlock)
+            scanAhead(here, bearingDeg, wantCams, wantFlock, wantPolice)
         }
         if (from == null) return
         val since = from.distanceTo(here)
@@ -1277,6 +1332,10 @@ internal class NavController(
             if (app.vela.ui.FlockNavAlert.voice.value) alert(msg)
             app.vela.car.CarBridge.toast(msg)
         }
+        if (wantPolice) app.vela.core.nav.PoliceAlerts.due(drivePolice, since, speed, driveAnnouncedPolice)?.let { key ->
+            driveAnnouncedPolice = driveAnnouncedPolice + key
+            announcePolice()
+        }
     }
 
     // Driving mode's look ahead (issue #727): the cameras along a straight line ahead of the car,
@@ -1292,8 +1351,10 @@ internal class NavController(
     private var driveFlockCount: Map<String, Int> = emptyMap()
     private var driveAnnouncedCams: Set<String> = emptySet()
     private var driveAnnouncedFlock: Set<String> = emptySet()
+    private var drivePolice: List<Pair<String, Double>> = emptyList()
+    private var driveAnnouncedPolice: Set<String> = emptySet()
 
-    private fun scanAhead(here: app.vela.core.model.LatLng, bearingDeg: Double, wantCams: Boolean, wantFlock: Boolean) {
+    private fun scanAhead(here: app.vela.core.model.LatLng, bearingDeg: Double, wantCams: Boolean, wantFlock: Boolean, wantPolice: Boolean) {
         driveScanJob = scope.launch {
             val line = listOf(here, aheadOf(here, bearingDeg, DRIVE_AHEAD_M))
             val cum = app.vela.core.nav.RouteProjection.cumulative(line)
@@ -1319,7 +1380,11 @@ internal class NavController(
                 if (last != null && m - last.second <= 40.0 && (counts[last.first] ?: 1) > 0) counts[last.first] = (counts[last.first] ?: 1) + 1
                 else { groups.add(k to m); counts[k] = 1 }
             }
-            driveCams = cams; driveFlock = groups; driveFlockCount = counts
+            // Police reports along the same line, keyed by report id as on a route.
+            val police = if (!wantPolice) emptyList() else withContext(Dispatchers.Default) {
+                app.vela.core.nav.PoliceAlerts.alongRoute(line, cum, app.vela.data.PoliceReports.reports.value)
+            }
+            driveCams = cams; driveFlock = groups; driveFlockCount = counts; drivePolice = police
             driveScanFrom = here; driveScanAtMs = android.os.SystemClock.elapsedRealtime()
             if (cams.isNotEmpty() || groups.isNotEmpty()) android.util.Log.i("VelaSpeedCam", "driving mode: ${cams.size} camera(s), ${groups.size} plate group(s) within ${DRIVE_AHEAD_M.toInt()} m ahead")
         }
@@ -1340,6 +1405,7 @@ internal class NavController(
         driveScanFrom = null; driveScanAtMs = 0L
         driveCams = emptyList(); driveFlock = emptyList(); driveFlockCount = emptyMap()
         driveAnnouncedCams = emptySet(); driveAnnouncedFlock = emptySet()
+        drivePolice = emptyList(); driveAnnouncedPolice = emptySet()
     }
 
     /** Say so when you have been over the posted limit for a few seconds (issue #404, opt-in).

@@ -17,7 +17,7 @@ Every chapter has the same four parts:
 | --- | --- | --- |
 | 1 | [Places on the map](01-places.md) | Where the pins come from and which are drawn |
 | 2 | [Data and rebakes](02-data-and-rebakes.md) | The hosted datasets and when each is rebuilt |
-| 3 | [Surveillance cameras](03-cameras.md) | The camera data, the avoid rule, the warnings |
+| 3 | [Surveillance cameras](03-cameras.md) | The camera data, the avoid rule, the warnings, police reports |
 | 4 | [Navigation](04-navigation.md) | The per-fix loop, rerouting, traffic rechecks |
 | 5 | [Routing](05-routing.md) | Whose route you drive (Google's line for driving) and where the turn instructions come from (open routers) |
 | 6 | [Search](06-search.md) | Suggestions, search on Enter, offline search |

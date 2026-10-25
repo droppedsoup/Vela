@@ -54,6 +54,11 @@ internal fun BoxScope.MapFloaters(state: MapUiState, vm: MapViewModel, sheet: Sh
     // Driving mode's bar and buttons (issue #727); it draws only while the gates let it.
     DrivingChrome(state, vm)
     if (state.replaying && !state.demoDriving) ReplayControls(state, vm)
+    // The Report button during a drive, above the right-edge buttons and the compass (portrait),
+    // or beside the bottom of that column (landscape, where the column fills the edge).
+    if (state.navigating && state.results.isEmpty() && !state.showSteps && !state.editingStops && state.myLocation != null) {
+        NavReportPolice(vm)
+    }
     // Only beside its sheet: with the search page up the place stays selected and the sheet is gone.
     if (sheet.shown.value) StreetViewThumb(state, vm, sheet.top)
 }
@@ -139,4 +144,30 @@ internal fun Modifier.popIn(): Modifier = composed {
         t.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.7f, stiffness = 380f))
     }
     graphicsLayer { alpha = t.value.coerceIn(0f, 1f); scaleX = 0.8f + 0.2f * t.value; scaleY = 0.8f + 0.2f * t.value }
+}
+
+/** The drive's Report button. Placed from the right-edge column's measured top ([navFabTopPx]),
+ *  read in the layout phase so the column growing (Re-center joining it) moves it without a
+ *  recomposition. */
+@Composable
+private fun BoxScope.NavReportPolice(vm: MapViewModel) {
+    val cfg = LocalConfiguration.current
+    val landscape = cfg.screenWidthDp > cfg.screenHeightDp
+    if (landscape) {
+        app.vela.ui.nav.ReportPoliceFab(
+            vm,
+            Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
+                .padding(end = NAV_FAB_COLUMN_DP + 10.dp, bottom = 16.dp).popIn(),
+        )
+        return
+    }
+    if (navFabTopPx.intValue <= 0) return
+    // Two 56 dp steps up from the column's top: the compass has the first.
+    val stepPx = with(androidx.compose.ui.platform.LocalDensity.current) { (56.dp + 10.dp).roundToPx() }
+    app.vela.ui.nav.ReportPoliceFab(
+        vm,
+        Modifier.align(Alignment.TopEnd).padding(end = NAV_FAB_EDGE_DP)
+            .offset { IntOffset(0, (navFabTopPx.intValue - 2 * stepPx).coerceAtLeast(0)) }
+            .popIn(),
+    )
 }

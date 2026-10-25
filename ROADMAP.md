@@ -257,6 +257,9 @@ Small items, one pull request each.
 Each of these passed its unit tests and has not been seen or heard where it matters. Take one
 off the list when it has been.
 
+- Police reports (SPEC 4.9). Unit tests cover the rules and the app builds; the button's place
+  over the drive's column, the badge, the card and the spoken line have not been seen on a phone.
+  Check on a simulated drive: report, drive the same route again, hear the alert.
 - Street names filling in mid-drive (`RouteHeal`). A simulated drive never re-checks, so it
   needs a real one. A trip's notes show it: a route whose totals line says `namingLate` or
   `bare=1`, then `recheck upgraded route for names`.

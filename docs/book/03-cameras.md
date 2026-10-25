@@ -138,6 +138,27 @@ processor core busy for the whole drive.
 The road-ahead bar marks a plate camera within 40 m that passes the facing test, and a speed
 camera within 40 m. [SPEC section 4.9](../../SPEC.md) has the remaining thresholds.
 
+## Police reports
+
+A blue Report button sits above the drive's right-edge buttons, and at the top of driving mode's
+column. A tap saves a police report where the car is, with the way it was heading, and the map
+shows a blue badge with a light bar there from zoom 10. The reports live in one small file on the
+phone and in its backups. Nothing is sent anywhere, so a report helps only the phone it was made
+on: the commute past the same speed trap, or the trip back.
+
+The warning works like the camera warnings with a longer lead. A report counts on a route within
+60 m of the line, wider than a camera, since a patrol car waits on a shoulder or a ramp, and its
+heading must run along the road either way, so a report made on a cross street stays quiet.
+Reports within 200 m along the route are one spot. The lead is 20 s of driving, clamped to 300 m
+and 1,200 m, once per spot, never behind. The alert is "Police reported ahead" on a card for 8 s,
+spoken (a chime in Alerts only) and a toast on Android Auto. Driving mode warns about the road
+ahead the same way.
+
+A report lasts an hour by default. Settings > Navigation > Road alerts has the switch, the
+lifetime (30 minutes to until cleared) and a button that clears them. A second report within
+150 m of a live one heading the same way replaces it. [SPEC section 4.9](../../SPEC.md) has the
+constants.
+
 ## Limits
 
 - Coverage is what volunteers have mapped. A removed camera stays until someone edits OSM. Speed
@@ -155,4 +176,6 @@ camera within 40 m. [SPEC section 4.9](../../SPEC.md) has the remaining threshol
   until the view reaches it. The alerts use per-route sets, and giving the bar those would close
   the gap.
 - Warning about speed cameras while driving is restricted in some countries, so the spoken
-  warning is its own switch.
+  warning is its own switch. The same goes for police reports, which have their own switch.
+- Police reports are not shared between phones. Vela has no server, and Waze's live feed refuses
+  every client but its own scored web page.

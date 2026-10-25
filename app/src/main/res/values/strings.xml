@@ -130,6 +130,9 @@
     <string name="settings_speed_cam_warn">Warn me out loud</string>
     <string name="settings_speed_cam_warn_hint">Says \"Speed camera ahead\" and shows a card as you approach one while navigating, about twelve seconds ahead. Follows your spoken-directions setting. Warning about cameras while driving is restricted in some countries, so this is off unless you turn it on.</string>
     <string name="nav_speed_camera_ahead">Speed camera ahead</string>
+    <string name="nav_police_ahead">Police reported ahead</string>
+    <string name="nav_police_reported">Police reported here. You will be warned when you drive this way.</string>
+    <string name="nav_report_police">Report police</string>
     <string name="settings_flock_nav_card">Plate camera heads-up</string>
     <string name="settings_flock_nav_card_hint">While navigating, shows a card as you get close to a license plate camera on your route. Cameras aimed across your road are skipped. Off by default.</string>
     <string name="settings_flock_nav_voice">Say when a plate camera is ahead</string>
@@ -1249,6 +1252,26 @@
     <string name="settings_privacy">Privacy</string>
     <string name="settings_cameras_group">Cameras</string>
     <string name="settings_road_alerts_group">Road alerts</string>
+    <string name="settings_police_alerts">Police reports</string>
+    <string name="settings_police_alerts_hint">Says \"Police reported ahead\" and shows a card when a spot you reported is coming up on your route or the road ahead. Report one with the blue button during a drive. Reports stay on this phone and are not shared with anyone.</string>
+    <string name="settings_police_lifetime">Keep a police report for</string>
+    <string name="settings_police_lifetime_forever">Until I clear it</string>
+    <plurals name="settings_police_lifetime_minutes">
+        <item quantity="one">%1$d minute</item>
+        <item quantity="other">%1$d minutes</item>
+    </plurals>
+    <plurals name="settings_police_lifetime_hours">
+        <item quantity="one">%1$d hour</item>
+        <item quantity="other">%1$d hours</item>
+    </plurals>
+    <plurals name="settings_police_lifetime_days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+    <plurals name="settings_police_clear">
+        <item quantity="one">Clear %1$d police report</item>
+        <item quantity="other">Clear %1$d police reports</item>
+    </plurals>
     <string name="settings_bridge_openings">Bridge openings</string>
     <string name="settings_bridge_openings_hint">In the Netherlands, says when a movable bridge on your route is open or due to open as you reach it. Planned and live openings come from NDW\'s open road data, asked only when your route enters the Netherlands.</string>
     <string name="nav_bridge_open_ahead">Bridge ahead is open</string>

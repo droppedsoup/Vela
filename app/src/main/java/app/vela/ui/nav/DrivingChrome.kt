@@ -178,7 +178,7 @@ internal fun BoxScope.DrivingChrome(state: MapUiState, vm: MapViewModel) {
         if (navBarFlush()) Spacer(Modifier.navigationBarsPadding())
     }
 
-    // The right-edge column, where the drive keeps its buttons: locate, then the voice.
+    // The right-edge column, where the drive keeps its buttons: report police, locate, then the voice.
     val barClearance = with(density) { DrivingBar.heightPx.intValue.toDp() } + 16.dp
     Column(
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -189,6 +189,7 @@ internal fun BoxScope.DrivingChrome(state: MapUiState, vm: MapViewModel) {
             .padding(end = NAV_FAB_EDGE_DP, bottom = if (landscape) 16.dp else barClearance)
             .popIn(),
     ) {
+        if (state.myLocation != null) ReportPoliceFab(vm)
         NavFab(onClick = locate, modifier = Modifier.dpadHighlight(CircleShape)) {
             Icon(Sym.MyLocation, contentDescription = stringResource(R.string.mapscreen_center_on_my_location))
         }
@@ -225,3 +226,16 @@ internal fun BoxScope.DrivingChrome(state: MapUiState, vm: MapViewModel) {
 
 /** Landscape: the bar sits this far from the safe left edge, as the drive's cards do. */
 private val DRIVING_LAND_EDGE_DP = 8.dp
+
+/** The Report button (SPEC 4.9, Police reports): police where the car is now. The badge's blue
+ *  and red, so it reads apart from the drive's other buttons. */
+@Composable
+internal fun ReportPoliceFab(vm: MapViewModel, modifier: Modifier = Modifier) {
+    androidx.compose.material3.FloatingActionButton(
+        onClick = { vm.reportPolice() },
+        modifier = modifier.dpadHighlight(CircleShape),
+        shape = CircleShape,
+        containerColor = Color(0xFF1A47B8),
+        contentColor = Color.White,
+    ) { Icon(Sym.LocalPolice, contentDescription = stringResource(R.string.nav_report_police)) }
+}

@@ -159,6 +159,7 @@ Stored locally and never transmitted:
 
 - Saved places, Home and Work, your lists, saved routes, recently viewed places, recent
   searches, parking history
+- Police reports you make during a drive (place, heading and time)
 - Settings
 - Downloaded regions and areas
 - Places you opened while online, kept so they open offline ("Keep viewed places for offline")

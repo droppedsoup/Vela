@@ -318,6 +318,7 @@ private val SEARCH_INDEX: List<Pair<Int, SettingsSection>> = listOf(
     R.string.settings_flock to SettingsSection.NAVIGATION,
     R.string.settings_speed_cams to SettingsSection.NAVIGATION,
     R.string.settings_speed_cam_warn to SettingsSection.NAVIGATION,
+    R.string.settings_police_alerts to SettingsSection.NAVIGATION,
     R.string.settings_bridge_openings to SettingsSection.NAVIGATION,
     R.string.settings_flock_route_alert to SettingsSection.NAVIGATION,
     R.string.settings_flock_detour to SettingsSection.NAVIGATION,

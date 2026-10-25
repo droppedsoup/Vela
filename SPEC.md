@@ -2434,7 +2434,7 @@ since a cluster's centroid sits in the junction's middle. The corridor fetch is 
   and steps On, Alerts only, Off, On on a long press
   (`MapViewModel.setVoiceMode`, prefs `spoken_directions` and `spoken_alerts_only`,
   `VoiceGuide.muted` and `alertsOnly`, the holder `VoiceAlertsOnly` for the hold control). In
-  Alerts only the speeding, speed camera, plate camera and bridge alerts play `VoiceGuide.alertChime`,
+  Alerts only the speeding, speed camera, plate camera, police and bridge alerts play `VoiceGuide.alertChime`,
   two short notes at 1046.5 Hz, instead of their spoken line (`NavController.alert`); every
   other chime and every prompt stays silent. Off is silent throughout. The car's speaker button
   steps the same three in the same order (`CarVoice.step`, issue #842) and shows the mode as
@@ -2454,6 +2454,38 @@ since a cluster's centroid sits in the junction's middle. The corridor fetch is 
   is ignored: the feed keeps some that were never closed. The alert is the card for 6 s, the voice
   (a chime in Alerts only, like the camera alerts) and a car toast. A recorded-trip replay asks
   nothing.
+
+#### Police reports
+
+A police report is a sighting the driver made on this phone: the place, the heading of travel
+(`myBearing`, or none) and the time. There is no shared feed. Waze's live map feed
+(`live-map/api/georss`) answers 403 to anything but its own reCAPTCHA-scored page (3.4), and
+Vela has no server, so reports are not exchanged between phones.
+
+- The Report button (`ReportPoliceFab`, blue with the `local_police` symbol) shows during a drive,
+  above the right-edge column and its compass in portrait (two 66 dp steps up from
+  `navFabTopPx`) and left of the column's foot in landscape, and at the top of driving mode's
+  column. A tap calls `NavController.reportPolice` and shows a card for 4 s.
+- `PoliceReports` (`:app`, started in `VelaApp`) keeps the live reports in
+  `files/police_reports.tsv` (`id`, lat, lng, heading, epoch ms per line, `PoliceAlerts.format`),
+  written by one thread through a file beside it, and included in backups. A new report within
+  `MERGE_M` (150 m) of a live one whose heading agrees within `AXIS_DEG` replaces it.
+- Settings > Navigation > Road alerts: "Police reports" (pref `police_alerts`, on) and "Keep a
+  police report for" 30 minutes, 1 hour (the default), 4 hours, 1 day or until cleared (pref
+  `police_lifetime_min`, 0 for until cleared), and a Clear button with the count.
+- On a route (`PoliceAlerts.alongRoute`): a report counts within `ON_ROUTE_M` (60 m) of the line
+  when its heading lies within `AXIS_DEG` (50 degrees) of the route's axis there, as an undirected
+  line, so a report from the other carriageway counts and one from a cross street does not.
+  Reports within `JOIN_M` (200 m) along the line are one spot, keyed by the first report's id.
+  `NavController.maybeWarnPolice` projects again when the route or the list changes, and keeps
+  what was announced by id.
+- `PoliceAlerts.due`: `LEAD_SECONDS` 20, floored at `MIN_LEAD_M` 300 and capped at `MAX_LEAD_M`
+  1,200, silent below `MOVING_FLOOR_MPS`, once per spot, never for one behind. The alert is
+  "Police reported ahead": the card for 8 s, the voice (the chime in Alerts only) and a car toast.
+- Driving mode with no route scans the same line ahead as the cameras (`scanAhead`) and announces
+  through the same rule. A recorded-trip replay announces nothing; a simulated drive does.
+- The map draws a badge per live report from z10 (`PoliceLayer`, `vela-police` above
+  `vela-speedcam`). The car map does not draw them.
 
 #### Street callouts
 

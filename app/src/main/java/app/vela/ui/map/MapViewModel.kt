@@ -7276,6 +7276,8 @@ class MapViewModel @Inject constructor(
     fun stopNav() = nav.stopNav()
     fun onNavPanned() = nav.onNavPanned()
     fun recenterNav() = nav.recenterNav()
+    /** The drive's Report button: police where the car is now (SPEC 4.9, Police reports). */
+    fun reportPolice() = nav.reportPolice()
     fun navOverview() = nav.navOverview()
     fun toggleNavNorthUp() = nav.toggleNavNorthUp()
 
