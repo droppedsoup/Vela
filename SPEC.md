@@ -3711,11 +3711,12 @@ shares (`widenStreets`, the road edges, label colors, the hide list, borders).
 | Dark, Contrast | `applyDark` with `CONTRAST_DARK` |
 | Light, Classic | `applyClassicLight` |
 | Light, Modern or Contrast | `applyLight` |
+| Mapcraft | `applyDark` or `applyLight` (Modern), then `Mapcraft.apply` |
 
-- `MapColors` picks Modern, Classic or Contrast: pref `map_palette`, and with no pick
-  calibration's `defaultMapPalette` (`modern`). AMOLED ignores the pick. The two Modern-shaped
-  night palettes are `DarkPalette` values (`MODERN_DARK`, `CONTRAST_DARK`) that `applyDark`
-  paints; Contrast by day draws as Modern.
+- `MapColors` picks Modern, Classic, Contrast or Mapcraft: pref `map_palette`, and with no pick
+  calibration's `defaultMapPalette` (`modern`). AMOLED ignores the pick, except Mapcraft, which
+  draws its night blocks. The two Modern-shaped night palettes are `DarkPalette` values
+  (`MODERN_DARK`, `CONTRAST_DARK`) that `applyDark` paints; Contrast by day draws as Modern.
 - The map's light or dark is its own setting: `AppTheme.mapMode` (`MapThemeMode` FOLLOW / LIGHT /
   DARK, pref `theme_map_mode`, Settings > Appearance > Map). `isMapDark()` resolves the nav
   day/night override first, then the map mode, then the app theme. `isMapAmoled()` is true only
@@ -3792,6 +3793,49 @@ also splits the two halves of a divided road.
 
 Each edge is at least `ROAD_EDGE_DP` (1 dp) wide from z16, growing in from z13.5 (`edgeFloor` in
 `widenStreets`).
+
+**Mapcraft** (`ui/map/Mapcraft.kt`) draws the map in block textures over the Modern palette. It
+skips the road edges and runs after `widenStreets`. A palette or theme change reloads the style,
+so a pattern it sets never has to be cleared.
+
+- `MapcraftTextures` makes 19 blocks, each 16 by 16 texels from a fixed seed, all drawn in code.
+  Most have a bevel: the top and left edges are lighter, the bottom and right darker, so a field
+  of one block reads as separate blocks. At night (dark or AMOLED) every texel is darkened toward
+  blue. Road surfaces (`lit`) keep more of their color at night so they stand out from the
+  grass.
+- Each block is registered as `vela-mc-<key>` at `TEXEL_DP` (1.75 dp) a texel, so a block is
+  28 dp across. Registration goes through `StyleLayers.addImage`, which the car's snapshotter has
+  too. If it fails, the same layers take each block's average color (`MapcraftTextures.average`).
+- `fill-antialias` is off on the textured fills, so blocks meet with no seam.
+
+| Layer | Block |
+| --- | --- |
+| `background` | grass (`background-pattern`) |
+| `landuse_residential` | hidden, so the grass shows |
+| `park`, `landcover_grass` | meadow (grass with flowers) |
+| `landcover_wood` | leaves |
+| `landcover_sand`, `landcover_ice`, `vela-wetland` | sand, snow, mud |
+| `water`, `waterway_river`, `waterway_other` | water |
+| `vela-pitch`, `landuse_pitch` | lawn (striped) |
+| `landuse_track`, `landuse_school` | terracotta |
+| `landuse_cemetery` | dirt |
+| `landuse_hospital` | quartz |
+| `vela-commercial`, `vela-plaza`, `aeroway_fill` | stone |
+| Motorways and their links | stone bricks (`line-pattern`) |
+| Trunk and primary | cobblestone |
+| Secondary and tertiary | gravel |
+| Minor, link, service and track | dirt path |
+| Minor, link and service bridges | planks |
+| `building`, `building-3d`, `vela-ovl-*` | by `render_height`: planks under 9 m, bricks under 24, stone bricks under 60, glass above |
+
+- Road lines and casings take square caps and miter joins. Casings are `#3d3a35` by day and
+  `#05070a` at night. Rail lines are `#6b5a45` by day and `#4a4038` at night.
+- Extrusion height and base are rounded up to whole `STEP_M` (3 m) steps, at half height at z17
+  and full height from z18, with the vertical gradient off, so walls are flat faces.
+- Road names, place names and water names are white with a 1.6 halo, `#2b2b2b` by day and
+  `#000000` at night.
+- Weather effects (`WeatherOverlay`) draw rain as straight-down streaks and snow as squares on a
+  grid of `BLOCK_PX_DP` (3 dp).
 
 **3D buildings.** Extrusions take the building fill color with the vertical gradient on, under a
 style light of intensity `B3D_LIGHT` (0.25). At 0 every face draws one color and no wall reads as

@@ -1234,7 +1234,8 @@
     <string name="settings_map_colors_modern">Modern</string>
     <string name="settings_map_colors_classic">Classic</string>
     <string name="settings_map_colors_contrast">Contrast</string>
-    <string name="settings_map_colors_hint">Modern matches the Google app\'s current palette. Classic is Vela\'s earlier look: white roads, yellow motorways, true greens. Contrast is a night map with warm streets on slate land, for a glance from a mount; by day it draws as Modern.</string>
+    <string name="settings_map_colors_mapcraft">Mapcraft</string>
+    <string name="settings_map_colors_hint">Modern matches the Google app\'s current palette. Classic is Vela\'s earlier look: white roads, yellow motorways, true greens. Contrast is a night map with warm streets on slate land, for a glance from a mount; by day it draws as Modern. Mapcraft builds the map from blocks: grass, water, stone roads and brick buildings.</string>
     <string name="shortcut_home">Home</string>
     <string name="shortcut_work">Work</string>
     <string name="map_satellite_attribution" translatable="false">Esri, Maxar, Earthstar Geographics</string>

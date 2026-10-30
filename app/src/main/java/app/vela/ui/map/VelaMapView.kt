@@ -1882,6 +1882,7 @@ fun VelaMapView(
                         PropertyFactory.fillOutlineColor(line),
                         PropertyFactory.visibility(Property.NONE),
                     )
+                    if (app.vela.ui.MapColors.mapcraft()) setProperties(PropertyFactory.fillPattern(Mapcraft.buildingPattern()))
                 }
                 if (below != null) style.addLayerBelow(layer, below) else style.addLayer(layer)
             }
@@ -8837,7 +8838,9 @@ internal fun applyMapTheme(style: StyleLayers, dark: Boolean, amoled: Boolean = 
     // Google-app pixel-sampled palette, "classic" the archived pre-sample look (SPEC 6.2md).
     val classic = app.vela.ui.MapColors.classic()
     val contrast = app.vela.ui.MapColors.contrast()
+    val mapcraft = app.vela.ui.MapColors.mapcraft()
     when {
+        mapcraft -> if (dark || amoled) applyDark(style) else applyLight(style)
         amoled -> applyAmoled(style)
         dark && classic -> applyClassicDark(style)
         dark && contrast -> applyDark(style, CONTRAST_DARK)
@@ -8846,7 +8849,8 @@ internal fun applyMapTheme(style: StyleLayers, dark: Boolean, amoled: Boolean = 
         else -> applyLight(style) // Contrast by day draws as Modern
     }
     widenStreets(style)
-    if (!classic && !contrast && !amoled) applyRoadEdges(style, dark)
+    if (mapcraft) Mapcraft.apply(style, dark || amoled)
+    else if (!classic && !contrast && !amoled) applyRoadEdges(style, dark)
     // Country and city names in the reader's language (issue #598). Here rather than in the four
     // palette functions: the text does not change with the colors, and a language change recreates
     // the activity, which reloads the style and runs this again.

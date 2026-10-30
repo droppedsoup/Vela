@@ -244,11 +244,12 @@ internal fun AppearanceSettingsScreen(vm: MapViewModel, onBack: () -> Unit) {
         SettingsGroup(title = stringResource(R.string.settings_map_colors)) {
             androidx.compose.foundation.layout.Column(Modifier.padding(horizontal = 16.dp)) {
                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    val palFocus = remember { List(3) { FocusRequester() } }
+                    val palFocus = remember { List(4) { FocusRequester() } }
                     listOf(
                         app.vela.ui.MapColors.MODERN to stringResource(R.string.settings_map_colors_modern),
                         app.vela.ui.MapColors.CLASSIC to stringResource(R.string.settings_map_colors_classic),
                         app.vela.ui.MapColors.CONTRAST to stringResource(R.string.settings_map_colors_contrast),
+                        app.vela.ui.MapColors.MAPCRAFT to stringResource(R.string.settings_map_colors_mapcraft),
                     ).forEachIndexed { i, (id, label) ->
                         FilterChip(
                             selected = app.vela.ui.MapColors.current() == id,

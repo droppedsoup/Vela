@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -285,6 +286,11 @@ private class Particles(n: Int, seed: Int) {
 
 /** The most particles any amount dial can ask for, per effect (twice the default). */
 private const val RAIN_MAX = 220
+
+/** Mapcraft's rain and snow are drawn on a grid of cells this many dp across. */
+private const val BLOCK_PX_DP = 3f
+
+private fun snap(v: Float, cell: Float) = kotlin.math.floor(v / cell) * cell
 private const val SNOW_MAX = 160
 private const val GUST_MAX = 18
 private const val FOG_BANKS = 6
@@ -394,6 +400,7 @@ fun WeatherOverlay(
     val gusts = remember { Particles(GUST_MAX, 37) }
     val banks = remember { Particles(FOG_BANKS, 53) }
     val ink = remember(dark) { Inks(dark) }
+    val blocky = app.vela.ui.MapColors.mapcraft()
     Canvas(modifier.fillMaxSize()) {
         val t = clock.floatValue
         val wd = screenWindDeg() * (PI / 180.0).toFloat()
@@ -434,7 +441,13 @@ fun WeatherOverlay(
                 val len = (14f + 14f * rain.size[i]) * dp * (0.7f + 0.3f * k) * tune.size
                 val dx = windX * len * 0.6f
                 val x = ((((rain.x[i] + windX * fallN * 0.35 * H / W) % 1.0) + 1.0) % 1.0 * W).toFloat()
-                drawLine(ink.rain.copy(alpha = alpha), Offset(x, y), Offset(x + dx, y + len), strokeWidth = 1.1f * dp * tune.size.coerceAtLeast(0.6f), cap = StrokeCap.Round)
+                if (blocky) {
+                    // Mapcraft: straight-down streaks on a pixel grid.
+                    val cell = BLOCK_PX_DP * dp
+                    drawRect(ink.rain.copy(alpha = alpha), Offset(snap(x, cell), snap(y, cell)), Size(cell, snap(len, cell).coerceAtLeast(cell * 3)))
+                } else {
+                    drawLine(ink.rain.copy(alpha = alpha), Offset(x, y), Offset(x + dx, y + len), strokeWidth = 1.1f * dp * tune.size.coerceAtLeast(0.6f), cap = StrokeCap.Round)
+                }
             }
         }
         if (w.kind == WeatherNow.Kind.SNOW || w.kind == WeatherNow.Kind.SLEET) {
@@ -447,9 +460,17 @@ fun WeatherOverlay(
                 val x = (((((snow.x[i] + windX * fallN * 0.8 * H / W) % 1.0) + 1.0) % 1.0) * W).toFloat() + sway
                 val r = (1.2f + 2.0f * snow.size[i]) * dp * tune.size
                 val a = ((0.55f + 0.25f * snow.size[i]) * tune.opacity).coerceIn(0f, 1f)
-                drawCircle(ink.snow.copy(alpha = a), radius = r, center = Offset(x, y))
-                // On the light map a white center keeps a flake reading as snow, not a gray dot.
-                ink.snowCore?.let { drawCircle(it.copy(alpha = a), radius = r * 0.55f, center = Offset(x, y)) }
+                if (blocky) {
+                    val cell = BLOCK_PX_DP * dp
+                    val side = snap(r * 2f, cell).coerceAtLeast(cell)
+                    val o = Offset(snap(x, cell), snap(y, cell))
+                    drawRect(ink.snow.copy(alpha = a), o, Size(side, side))
+                    ink.snowCore?.let { if (side > cell) drawRect(it.copy(alpha = a), o + Offset(cell / 2f, cell / 2f), Size(side - cell, side - cell)) }
+                } else {
+                    drawCircle(ink.snow.copy(alpha = a), radius = r, center = Offset(x, y))
+                    // On the light map a white center keeps a flake reading as snow, not a gray dot.
+                    ink.snowCore?.let { drawCircle(it.copy(alpha = a), radius = r * 0.55f, center = Offset(x, y)) }
+                }
             }
         }
         if (!falls && w.windy) {

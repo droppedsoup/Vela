@@ -16,12 +16,16 @@ interface StyleLayers {
     fun getLayer(id: String): Layer?
     fun getSource(id: String): Source?
     val layers: List<Layer>
+
+    /** Registers [bitmap] under [name] for the style's patterns and icons. */
+    fun addImage(name: String, bitmap: android.graphics.Bitmap)
 }
 
 class StyleHost(private val style: Style) : StyleLayers {
     override fun getLayer(id: String): Layer? = style.getLayer(id)
     override fun getSource(id: String): Source? = style.getSource(id)
     override val layers: List<Layer> get() = style.layers
+    override fun addImage(name: String, bitmap: android.graphics.Bitmap) = style.addImage(name, bitmap)
 }
 
 /** A snapshotter exposes layers and sources by id only; the loops over the whole list (Vela's own
@@ -33,4 +37,5 @@ class SnapshotterHost(private val snapshotter: MapSnapshotter, private val layer
      *  the style JSON it loaded, so the palette's blanket passes (label halos, landuse) run on the
      *  car too. Empty ids = only the named-layer passes, which is how it was until 2026-09-22. */
     override val layers: List<Layer> get() = layerIds.mapNotNull { getLayer(it) }
+    override fun addImage(name: String, bitmap: android.graphics.Bitmap) = snapshotter.addImage(name, bitmap, false)
 }

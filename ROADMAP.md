@@ -257,6 +257,9 @@ Small items, one pull request each.
 Each of these passed its unit tests and has not been seen or heard where it matters. Take one
 off the list when it has been.
 
+- Mapcraft map colors (SPEC 6.2). The textures are unit tested and the app builds; how the
+  patterns look on a phone, in 3D, at night and on the car screen, and their frame cost in a
+  dense city, have not been seen.
 - Weather effects, their editor and the radar reading (SPEC 6). Parsing is unit tested, the
   forecast reply checked live and the radar color match run on live tiles over Europe; the
   effects, the editor and a drive through rain that starts and stops have been seen on no phone,
