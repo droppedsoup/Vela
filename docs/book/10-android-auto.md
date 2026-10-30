@@ -180,15 +180,29 @@ applies the palette, discards that frame and renders again.
 
 | Theme on the phone | Car map |
 | --- | --- |
+| "Day and night while navigating", during a drive or drive mode | follows the sun |
+| Settings > Appearance > Map set to Light or Dark | that |
 | Light | light |
-| Dark, AMOLED black | dark, with the true-black palette for AMOLED |
+| Dark, AMOLED black | dark, with the true-black palette for AMOLED while the map follows the app |
 | Day and night | follows the sun as the phone computes it |
 | Follow system | the car's own day or night signal |
 
-An explicit choice on the phone holds on the car, so a driver who set Vela to dark does not get a
-light map because the head unit says day. Before each render the renderer checks that the look it
-applied is still the current one and applies the palette again if it changed, so the map goes
-dark with the car.
+The rows are read top down, the order the phone's map reads them. An explicit choice on the phone
+holds on the car, so a driver who set Vela to dark does not get a light map because the head unit
+says day. Before each render the renderer checks that the look it applied is still the current
+one and applies the palette again if it changed, so the map goes dark with the car. A new map
+look or color set on the phone, Mapcraft included, rebuilds the car's style on its next frame,
+and the 3D buildings switch shows or hides the car's extrusions.
+
+### Weather and police on the car map
+
+The car draws the phone's weather effects over its map, for its own place: the car while the map
+follows it, else the view's center, so a searched city on the car shows that city's weather
+while the phone shows its own view. The effects, the tuning dials and a simulated weather are
+the phone's. A snapshot takes 100 to 300 ms, too slow for falling rain, so while the weather
+moves the renderer draws the last snapshot again with the next frame of the effects about 15
+times a second (fog 5), with the arrow kept where the snapshot drew it. Reported police show as
+the phone's badge from zoom 10.
 
 ### The screens
 

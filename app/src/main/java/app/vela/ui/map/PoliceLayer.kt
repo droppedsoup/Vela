@@ -68,7 +68,7 @@ internal object PoliceLayer {
     }
 
     /** A rounded blue badge with a white rim and a light bar: red and blue lamps on a white base. */
-    private fun badge(): Bitmap {
+    fun badge(): Bitmap {
         val s = 46
         val bmp = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)

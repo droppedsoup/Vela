@@ -257,6 +257,9 @@ Small items, one pull request each.
 Each of these passed its unit tests and has not been seen or heard where it matters. Take one
 off the list when it has been.
 
+- Weather effects, police badges, Mapcraft and the look and color rebuild on the Android Auto map
+  (SPEC 10.6). Builds; not run on the Desktop Head Unit or a car, and the cost of the redrawn
+  weather frames on a head unit is not measured.
 - Mapcraft map colors (SPEC 6.2). The textures are unit tested and the app builds; how the
   patterns look on a phone, in 3D, at night and on the car screen, and their frame cost in a
   dense city, have not been seen.

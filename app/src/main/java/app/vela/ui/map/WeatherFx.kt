@@ -28,7 +28,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
@@ -64,6 +63,18 @@ object WeatherFx {
 
     /** What the map draws now. */
     val shown: WeatherNow? get() = (if (simulateOnMap.value) simulated.value else null) ?: now.value
+
+    /** The real weather where the Android Auto map is (`CarMapRenderer`), kept apart from [now]:
+     *  the phone and the car can show different places. */
+    val carNow = mutableStateOf<WeatherNow?>(null)
+
+    /** What the car map draws now. */
+    val carShown: WeatherNow? get() = if (!on.value) null else (if (simulateOnMap.value) simulated.value else null) ?: carNow.value
+
+    /** How far around the car the weather is read while the map follows it, and the widest view
+     *  one weather is drawn for (`VelaMapView` and `CarMapRenderer` both). */
+    const val CAR_RADIUS_M = 2_500.0
+    const val WIDEST_M = 150_000.0
 
     /**
      * One effect's dials, each a multiplier on the built-in look (1 is the default): how many
@@ -141,6 +152,7 @@ object WeatherFx {
 
     private const val RADAR_CHECK_MS = 2 * 60_000L
     private const val TICK_MS = 30_000L
+    private const val PLACE_POLL_MS = 250L
 
     /** The newest radar frame, or null. */
     private suspend fun radarFrame(): RainRadar.Frame? = withContext(Dispatchers.IO) {
@@ -229,47 +241,58 @@ object WeatherFx {
         val enabled = on.value
         LaunchedEffect(enabled) {
             if (!enabled) return@LaunchedEffect
-            if (!pressureHooked) {
-                pressureHooked = true
-                app.vela.ui.MemoryPressure.register { level ->
-                    if (app.vela.ui.MemoryPressure.isSevere(level)) {
-                        synchronized(radarTiles) { radarTiles.clear() }; synchronized(coverageTiles) { coverageTiles.clear() }
-                    }
+            keep({ pos.value }, now, showsRadar = true)
+        }
+    }
+
+    /**
+     * The loop behind [Keeper], for any place source: works the place [place] returns into
+     * [out] until canceled, as [Keeper] describes. [showsRadar] also keeps [radarFrameS], the
+     * settings line's source, which only the phone map sets.
+     */
+    suspend fun keep(place: () -> Place?, out: androidx.compose.runtime.MutableState<WeatherNow?>, showsRadar: Boolean = false) = coroutineScope {
+        if (!pressureHooked) {
+            pressureHooked = true
+            app.vela.ui.MemoryPressure.register { level ->
+                if (app.vela.ui.MemoryPressure.isSevere(level)) {
+                    synchronized(radarTiles) { radarTiles.clear() }; synchronized(coverageTiles) { coverageTiles.clear() }
                 }
             }
-            var lastCell: Pair<Long, Long>? = null
-            while (isActive) {
-                val place = pos.value
-                if (place == null) {
-                    // No place: a view too wide for one weather (a region or a country).
-                    if (now.value != null) now.value = null
-                    radarFrameS.value = null
-                    lastCell = null
-                } else {
-                    val p = place.at
-                    val cell = cellOf(p)
-                    val (series, reading) = coroutineScope {
-                        val fc = async { forecastFor(cell) }
-                        val rd = async { radarAt(p, place.radiusM) }
-                        fc.await() to rd.await()
-                    }
-                    // Still the place asked for: a pan that moved on meanwhile is worked next pass.
-                    if (pos.value?.let(::keyOf) == keyOf(place)) {
-                        val nowS = System.currentTimeMillis() / 1000
-                        val w = RainRadar.combine(series?.let { MetNoWeather.at(it, System.currentTimeMillis()) }, reading, nowS)
-                        radarFrameS.value = if (reading != null && reading.covered && nowS - reading.frameTimeS <= RainRadar.MAX_AGE_S) reading.frameTimeS else null
-                        // A new place with nothing known clears the old place's weather rather than
-                        // showing it there.
-                        if (w != null || cell != lastCell) now.value = w
-                        lastCell = cell
-                    }
+        }
+        var lastCell: Pair<Long, Long>? = null
+        while (isActive) {
+            val at = place()
+            if (at == null) {
+                // No place: a view too wide for one weather (a region or a country).
+                if (out.value != null) out.value = null
+                if (showsRadar) radarFrameS.value = null
+                lastCell = null
+            } else {
+                val p = at.at
+                val cell = cellOf(p)
+                val (series, reading) = coroutineScope {
+                    val fc = async { forecastFor(cell) }
+                    val rd = async { radarAt(p, at.radiusM) }
+                    fc.await() to rd.await()
                 }
-                // Sleep until the next tick or until the place changes (its cell, or a zoom that
-                // changes how much of the radar is read), whichever is first.
-                val from = pos.value?.let(::keyOf)
-                withTimeoutOrNull(TICK_MS) {
-                    androidx.compose.runtime.snapshotFlow { pos.value?.let(::keyOf) }.first { it != from }
+                // Still the place asked for: a pan that moved on meanwhile is worked next pass.
+                if (place()?.let(::keyOf) == keyOf(at)) {
+                    val nowS = System.currentTimeMillis() / 1000
+                    val w = RainRadar.combine(series?.let { MetNoWeather.at(it, System.currentTimeMillis()) }, reading, nowS)
+                    if (showsRadar) radarFrameS.value = if (reading != null && reading.covered && nowS - reading.frameTimeS <= RainRadar.MAX_AGE_S) reading.frameTimeS else null
+                    // A new place with nothing known clears the old place's weather rather than
+                    // showing it there.
+                    if (w != null || cell != lastCell) out.value = w
+                    lastCell = cell
                 }
+            }
+            // Sleep until the next tick or until the place changes (its cell, or a zoom that
+            // changes how much of the radar is read), whichever is first.
+            val from = place()?.let(::keyOf)
+            // Polled rather than observed: the car's place is a plain field, and outside a
+            // running activity no snapshot observer would see it change.
+            withTimeoutOrNull(TICK_MS) {
+                while (place()?.let(::keyOf) == from) delay(PLACE_POLL_MS)
             }
         }
     }
@@ -369,41 +392,74 @@ fun WeatherOverlay(
 ) {
     val w = weather ?: return
     if (!WeatherFx.on.value) return
-    val falls = w.kind != WeatherNow.Kind.CLEAR && w.kind != WeatherNow.Kind.FOG
-    val animate = falls || w.windy || w.kind == WeatherNow.Kind.FOG
+    val animate = WeatherPainter.animates(w)
     val clock = remember { mutableFloatStateOf(0f) }
-    val bolt = remember { mutableStateOf<Bolt?>(null) }
-    val tune = WeatherFx.tune(w.kind)
-    val windTune = WeatherFx.tune(WeatherNow.Kind.CLEAR)
+    val painter = remember { WeatherPainter() }
     LaunchedEffect(animate, w.kind) {
         if (!animate) return@LaunchedEffect
         var last = 0L
-        val r = java.util.Random()
-        var nextStrike = SystemClock.uptimeMillis() + 2_500L
         while (isActive) {
             val t = androidx.compose.runtime.withFrameNanos { it }
             if (t - last < 30_000_000L) continue // about 30 frames a second is plenty for a backdrop
             last = t
+            painter.tick(w, SystemClock.uptimeMillis())
             clock.floatValue = (t / 1e9).toFloat() % 10_000f
-            if (w.kind == WeatherNow.Kind.STORM) {
-                val now = SystemClock.uptimeMillis()
-                if (now >= nextStrike) {
-                    bolt.value = Bolt.make(r, now)
-                    // Heavier storms strike more often: 5 to 11 s apart at full intensity.
-                    nextStrike = now + ((7_000L + r.nextInt(9_000)) * (1.3f - 0.5f * w.intensity)).toLong()
-                }
-            }
         }
     }
-    val rain = remember { Particles(RAIN_MAX, 11) }
-    val snow = remember { Particles(SNOW_MAX, 23) }
-    val gusts = remember { Particles(GUST_MAX, 37) }
-    val banks = remember { Particles(FOG_BANKS, 53) }
-    val ink = remember(dark) { Inks(dark) }
     val blocky = app.vela.ui.MapColors.mapcraft()
     Canvas(modifier.fillMaxSize()) {
-        val t = clock.floatValue
-        val wd = screenWindDeg() * (PI / 180.0).toFloat()
+        with(painter) { paint(w, clock.floatValue, dark, screenWindDeg(), blocky) }
+    }
+}
+
+/**
+ * Draws one frame of the weather effects for a clock [paint]'s `t` (seconds). Holds the
+ * particles' fixed traits and the storm's current bolt. The phone map draws it in a Compose
+ * canvas ([WeatherOverlay]); the Android Auto map draws it over each car frame ([paintOn]).
+ */
+internal class WeatherPainter {
+    private val rain = Particles(RAIN_MAX, 11)
+    private val snow = Particles(SNOW_MAX, 23)
+    private val gusts = Particles(GUST_MAX, 37)
+    private val banks = Particles(FOG_BANKS, 53)
+    private val lightInk = Inks(false)
+    private val darkInk = Inks(true)
+    private val rnd = java.util.Random()
+    private var bolt: Bolt? = null
+    private var nextStrike = 0L
+    private var scope: androidx.compose.ui.graphics.drawscope.CanvasDrawScope? = null
+
+    companion object {
+        /** Whether [w] moves: anything falling, fog, or wind past the windy line. */
+        fun animates(w: WeatherNow): Boolean = w.kind != WeatherNow.Kind.CLEAR || w.windy
+    }
+
+    /** Starts the storm's next strike when it is due (uptime ms). */
+    fun tick(w: WeatherNow, nowMs: Long) {
+        if (w.kind != WeatherNow.Kind.STORM) { nextStrike = 0L; return }
+        if (nextStrike == 0L) nextStrike = nowMs + 2_500L
+        if (nowMs >= nextStrike) {
+            bolt = Bolt.make(rnd, nowMs)
+            // Heavier storms strike more often: 5 to 11 s apart at full intensity.
+            nextStrike = nowMs + ((7_000L + rnd.nextInt(9_000)) * (1.3f - 0.5f * w.intensity)).toLong()
+        }
+    }
+
+    /** One frame on a plain Android canvas of [width] by [height] pixels at [density]. */
+    fun paintOn(canvas: android.graphics.Canvas, width: Int, height: Int, density: Float, w: WeatherNow, t: Float, dark: Boolean, screenWindDeg: Float, blocky: Boolean) {
+        val ds = scope ?: androidx.compose.ui.graphics.drawscope.CanvasDrawScope().also { scope = it }
+        ds.draw(
+            androidx.compose.ui.unit.Density(density), androidx.compose.ui.unit.LayoutDirection.Ltr,
+            androidx.compose.ui.graphics.Canvas(canvas), Size(width.toFloat(), height.toFloat()),
+        ) { paint(w, t, dark, screenWindDeg, blocky) }
+    }
+
+    fun androidx.compose.ui.graphics.drawscope.DrawScope.paint(w: WeatherNow, t: Float, dark: Boolean, screenWindDeg: Float, blocky: Boolean) {
+        val ink = if (dark) darkInk else lightInk
+        val tune = WeatherFx.tune(w.kind)
+        val windTune = WeatherFx.tune(WeatherNow.Kind.CLEAR)
+        val falls = w.kind != WeatherNow.Kind.CLEAR && w.kind != WeatherNow.Kind.FOG
+        val wd = screenWindDeg * (PI / 180.0).toFloat()
         // Sideways drift on screen from the wind, as a share of the fall.
         val windX = (sin(wd) * (w.windKmh / 60.0).coerceAtMost(1.0)).toFloat()
         val W = size.width; val H = size.height
@@ -494,7 +550,7 @@ fun WeatherOverlay(
                 )
             }
         }
-        val b = bolt.value
+        val b = bolt
         if (b != null) {
             val env = strikeEnvelope(SystemClock.uptimeMillis() - b.startMs) * tune.extra.coerceIn(0f, 3f)
             if (env > 0f) {

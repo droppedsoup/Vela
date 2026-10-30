@@ -328,8 +328,8 @@ private const val WEATHER_VIEW_M = 20_000.0
 private const val WEATHER_LOOK_MS = 300L
 // How far around the car the radar is read while driving, and the widest view (half its shorter
 // side) that still gets weather: past it the view is a region or a country.
-private const val WEATHER_CAR_M = 2_500.0
-private const val WEATHER_WIDEST_M = 150_000.0
+private const val WEATHER_CAR_M = WeatherFx.CAR_RADIUS_M
+private const val WEATHER_WIDEST_M = WeatherFx.WIDEST_M
 private const val SCRUB_FOLLOW_S = 0.12f
 private const val SCRUB_RETURN_S = 0.45f
 // The style light for extrusions. 0 draws every face in the palette color (no wall reads as a

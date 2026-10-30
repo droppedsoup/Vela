@@ -4112,7 +4112,8 @@ A version query on `BAKED_URL` moves the map cache off old tiles after a rebake.
   country, anywhere both sources reach (`WeatherFx.Place`). `VelaMapView` looks at the camera
   every `WEATHER_LOOK_MS` (300 ms) and takes a view once it has held one 0.1-degree cell and one
   radar disc size for two looks, so a flight or a zoom in progress asks nothing on the way; a
-  drive always uses the car, read `WEATHER_CAR_M` (2.5 km) around it.
+  drive always uses the car, read `WEATHER_CAR_M` (2.5 km) around it. The Android Auto map keeps
+  its own reading (SPEC 10.6).
 - A view is read over its own area: half the screen's shorter side, from the zoom
   (`getMetersPerPixelAtLatitude`, meters per dp; a tilted view's bounds reach the horizon), as a
   disc of radar pixels (`RainRadar.radiusPx`, 2 to 40 px, about 40 km). It is wet when
@@ -5823,7 +5824,14 @@ The map:
   Noto) and takes the phone's palette through the `StyleLayers` interface
   (`applyMapTheme(SnapshotterHost(...), dark, amoled)`). The palette is applied from the first
   snapshot callback, because the style observer never fires for a style handed over as JSON, and
-  that first frame is discarded. It is re-applied when the car's day/night changes.
+  that first frame is discarded. It is re-applied when the car's day/night changes. Day or night
+  follows the phone's map rules in `isMapDark()` order: day and night while driving, then the
+  map's own Light or Dark, then the app theme, then the car's own signal. AMOLED takes the
+  true-black palette only while the map follows the app, as on the phone.
+- A change of the phone's map look or color set rebuilds the snapshotter on the next render
+  (`reloadIfRestyled`, keyed on `carStyleKey`): a palette applied over another would leave its
+  patterns on (Mapcraft's are not cleared). Mapcraft's textures reach the car through
+  `SnapshotterHost.addImage`.
 - The snapshotter cannot add a layer or a source, so the layers the phone's `ensureLayers` adds
   to Liberty at runtime are written into the patched style's JSON before it loads (`CarStyle.inject`):
   the flat `vela-wetland` and `vela-plaza` twins over the hidden patterned originals, `vela-pitch`
@@ -5838,7 +5846,21 @@ The map:
 - `applyOverlays` runs before each themed render: the traffic layer is visible when
   `Traffic.shown(nav)` holds, as on the phone, and the
   basemap place icon tiers take the phone's `applyPoiTierFilters` (vegetation out; fuel only during
-  a drive). Each is set again only when its state changes.
+  a drive), and `building-3d` follows the phone's 3D buildings switch. Each is set again only
+  when its state changes.
+- Weather effects: the car keeps its own reading, `WeatherFx.carNow`, through `WeatherFx.keep`,
+  the loop behind the phone's `Keeper`, so the phone and the car can show different places. The
+  place is the car, `CAR_RADIUS_M` (2.5 km) around it, while the map follows it; else the view's
+  center over half the shorter side, and nothing past `WIDEST_M` (150 km). `WeatherFx.carShown`
+  takes the editor's simulated weather with "Show on the map" on. The phone's
+  `WeatherPainter` draws it over each snapshot (through a `CanvasDrawScope` on the surface's
+  canvas), above the route and the police badges and under the pins and the arrow, with the
+  wind turned by the snapshot's bearing and Mapcraft's square rain and snow. While it moves, the
+  last snapshot is drawn again with the next frame every `WEATHER_FRAME_MS` (66 ms), fog every
+  `WEATHER_FOG_FRAME_MS` (200 ms), and once more after it stops. Those frames keep the arrow where
+  it was drawn on the snapshot (`drawnPuck`), or it would run ahead of the map and jump back.
+- Police reports draw as the phone's badge (`PoliceLayer.badge`) from `POLICE_MIN_ZOOM` (10),
+  `POLICE_SCALE` (1.4) stop signs across.
 - Each snapshot's time, zoom, tilt, traffic state and speed are logged under `VelaCar` at debug
   level (`setprop log.tag.VelaCar DEBUG` on the phone), the measure of what a raster or a tilt
   costs per frame.

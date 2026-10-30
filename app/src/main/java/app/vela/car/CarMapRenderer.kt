@@ -122,6 +122,22 @@ class CarMapRenderer(
     private var lastTickMs = 0L
     private var zoomTarget = 16.5 // the speed-tiered nav zoom eases toward this; it used to step
     @Volatile private var themed = false // Vela's palette applied to the snapshotter's style
+    // The look and color set the snapshotter's style was built for: a change of either on the
+    // phone builds it again, since a palette's patterns (Mapcraft) cannot be taken off a style.
+    private var builtFor: String? = null
+    // The weather over the car map (SPEC 10.6, Weather): its own reading for the place the car map
+    // shows, and frames redrawn over the last snapshot while it moves, since a snapshot takes far
+    // longer than a frame of falling rain.
+    private val weatherPainter = app.vela.ui.map.WeatherPainter()
+    private var weatherKeepJob: Job? = null
+    private var weatherJob: Job? = null
+    @Volatile private var weatherPlace: app.vela.ui.map.WeatherFx.Place? = null
+    private var lastCamUsed = 0.0
+    private var lastClip: FrontClip? = null
+    // The arrow as drawn on the current snapshot: a weather frame between snapshots keeps it
+    // there, or it would slide ahead of the map and jump back.
+    private var drawnPuck: LatLng? = null
+    private var drawnHeading = 0.0
     // Which look the palette was applied FOR. The car flips day/night on its own (the head unit's
     // light sensor or clock), and a palette applied once at style load stayed light through a
     // drive into the evening (user 2026-09-22, stock Pixel 9); requestRender re-applies it when
@@ -204,6 +220,11 @@ class CarMapRenderer(
         }
         const val STOPPED_MPS = 1.0   // below this, treat as parked: don't trust GPS-course noise
         const val SNAP_MAX_M = 40.0   // map-match to the route only within this distance (else off-route)
+        const val POLICE_MIN_ZOOM = 10.0
+        const val POLICE_SCALE = 1.4f  // a police badge is this many stop signs across
+        const val WEATHER_FRAME_MS = 66L      // falling weather and wind redraw about 15 times a second
+        const val WEATHER_FOG_FRAME_MS = 200L // fog five times
+        const val WEATHER_IDLE_MS = 1_000L    // nothing moving: check once a second
         const val FLING_TAU_S = 0.35  // a fling's speed falls to a third in this long
         const val FLING_STOP_PX_S = 40.0 // and stops below this
     }
@@ -341,6 +362,15 @@ class CarMapRenderer(
         // A look Vela does not paint is as dark as it comes.
         val look = app.vela.ui.MapLook.style.value
         if (!look.painted) return look.darkLook
+        // The phone's map rules first, as isMapDark() reads them: day and night while driving,
+        // then the map's own light or dark.
+        val theme = app.vela.ui.theme.AppTheme
+        if ((navigating() || driveScreen) && theme.navDayNight.value) return theme.night.value
+        when (theme.mapMode.value) {
+            app.vela.ui.theme.MapThemeMode.LIGHT -> return false
+            app.vela.ui.theme.MapThemeMode.DARK -> return true
+            app.vela.ui.theme.MapThemeMode.FOLLOW -> Unit
+        }
         return when (app.vela.ui.theme.AppTheme.mode.value) {
             app.vela.ui.theme.ThemeMode.LIGHT -> false
             app.vela.ui.theme.ThemeMode.DARK, app.vela.ui.theme.ThemeMode.AMOLED -> true
@@ -458,6 +488,50 @@ class CarMapRenderer(
             }
         }
         startTicker()
+        startWeather()
+    }
+
+    /** The place the car map's weather is read for: the car while the map follows it, else the
+     *  view's center, and nothing for a view too wide for one weather, as on the phone. */
+    private fun carWeatherPlace(): app.vela.ui.map.WeatherFx.Place? {
+        if (!app.vela.ui.map.WeatherFx.on.value || showingWorld) return null
+        val p = puck
+        if (following && previewRoute == null && resultPins.isEmpty() && p != null) {
+            return app.vela.ui.map.WeatherFx.Place(p, app.vela.ui.map.WeatherFx.CAR_RADIUS_M)
+        }
+        val c = center ?: return null
+        val viewM = metersPerPixel(c.lat) * minOf(width, height) / 2.0
+        if (viewM > app.vela.ui.map.WeatherFx.WIDEST_M) return null
+        return app.vela.ui.map.WeatherFx.Place(c, maxOf(app.vela.ui.map.WeatherFx.CAR_RADIUS_M, viewM))
+    }
+
+    /** Keeps [app.vela.ui.map.WeatherFx.carNow] for [weatherPlace], and redraws the last snapshot
+     *  with the weather's next frame while it moves: every [WEATHER_FRAME_MS], fog (which drifts
+     *  slowly and costs the most to draw) every [WEATHER_FOG_FRAME_MS]. */
+    private fun startWeather() {
+        weatherKeepJob?.cancel(); weatherJob?.cancel()
+        weatherKeepJob = scope.launch { app.vela.ui.map.WeatherFx.keep({ weatherPlace }, app.vela.ui.map.WeatherFx.carNow) }
+        weatherJob = scope.launch {
+            var drewWeather = false
+            while (true) {
+                weatherPlace = carWeatherPlace()
+                val w = app.vela.ui.map.WeatherFx.carShown
+                val moving = w != null && app.vela.ui.map.WeatherPainter.animates(w)
+                // One more frame after the weather stops, so its last particles do not stay.
+                if (moving || drewWeather) {
+                    val snap = lastSnapshot; val clip = lastClip
+                    if (snap != null && clip != null) draw(snap, lastCamUsed, clip, frozen = true)
+                }
+                drewWeather = moving
+                kotlinx.coroutines.delay(
+                    when {
+                        !moving -> WEATHER_IDLE_MS
+                        w?.kind == app.vela.core.data.weather.WeatherNow.Kind.FOG -> WEATHER_FOG_FRAME_MS
+                        else -> WEATHER_FRAME_MS
+                    },
+                )
+            }
+        }
     }
 
     /** Steady loop that eases the displayed puck/bearing toward the GPS targets, so the map glides
@@ -515,6 +589,9 @@ class CarMapRenderer(
         collectJob = null
         tickerJob?.cancel()
         tickerJob = null
+        weatherKeepJob?.cancel(); weatherKeepJob = null
+        weatherJob?.cancel(); weatherJob = null
+        app.vela.ui.map.WeatherFx.carNow.value = null
         // Session teardown: release the native snapshotter too (onSurfaceDestroyed may not fire on an
         // abnormal projection end). Safe here because stop() is session-scoped, not per-screen.
         runCatching { snapshotter?.cancel() }
@@ -584,7 +661,7 @@ class CarMapRenderer(
             .withPixelRatio(1.0f)
             .withLogo(false)
         themed = false
-        trafficShown = null; fuelOnlyShown = null
+        trafficShown = null; fuelOnlyShown = null; b3dShown = null
         snapshotter = runCatching { QuietSnapshotter(carContext, opts) }.getOrNull()?.also { s2 ->
             // Vela's own palette on the car map (the same applyMapTheme the phone runs): until
             // 2026-09-21 the car drew stock Liberty under a darkening color filter, which read as
@@ -600,7 +677,22 @@ class CarMapRenderer(
             })
         }
         snapWidth = width; snapHeight = height
+        builtFor = carStyleKey()
         requestRender()
+    }
+
+    private fun carStyleKey() = "${app.vela.ui.MapLook.style.value.key}|${app.vela.ui.MapColors.current()}"
+
+    /** Builds the snapshotter again when the phone's map look or color set changed since it was
+     *  built: a theme applied over another would leave the old one's patterns on. */
+    private fun reloadIfRestyled(): Boolean {
+        if (builtFor == null || builtFor == carStyleKey() || surface == null) return false
+        runCatching { snapshotter?.cancel() }
+        snapshotter = null
+        snapWidth = 0; snapHeight = 0
+        rendering = false; dirty = false
+        surface?.let { onSurfaceAvailable(SurfaceContainer(it, width, height, carContext.resources.displayMetrics.densityDpi)) }
+        return true
     }
 
     override fun onSurfaceDestroyed(container: SurfaceContainer) {
@@ -738,7 +830,8 @@ class CarMapRenderer(
             if (app.vela.ui.MapLook.style.value.painted) app.vela.ui.map.applyMapTheme(
                 host,
                 dark = night,
-                amoled = night && app.vela.ui.theme.AppTheme.mode.value == app.vela.ui.theme.ThemeMode.AMOLED,
+                amoled = night && app.vela.ui.theme.AppTheme.mapMode.value == app.vela.ui.theme.MapThemeMode.FOLLOW &&
+                    app.vela.ui.theme.AppTheme.mode.value == app.vela.ui.theme.ThemeMode.AMOLED,
             ) else app.vela.ui.map.applyLookTheme(host, dark = night)
         }
         ok.onFailure { android.util.Log.w("VelaCar", "theme failed (dark=$night, ${styleLayerIds.size} ids): $it") }
@@ -753,6 +846,7 @@ class CarMapRenderer(
         if (snap == null || here == null) return
         if (rendering) { dirty = true; return }
         if (reloadIfPatched()) return // the rebuilt snapshotter renders on its own
+        if (reloadIfRestyled()) return
         rendering = true
         // The car flipped day/night since the palette went on: re-theme before this frame.
         if (themed && themedNight != isNight()) applyTheme(snap)
@@ -829,6 +923,7 @@ class CarMapRenderer(
     }
 
     private var trafficShown: Boolean? = null
+    private var b3dShown: Boolean? = null
     private var fuelOnlyShown: Boolean? = null
     // The style loaded from the plain URL, without the car layers, because the patched file did
     // not exist yet (a first launch, or the font host down). Once it exists the style is built
@@ -869,6 +964,18 @@ class CarMapRenderer(
                 )
             }
         }
+        // The phone's 3D buildings switch.
+        val b3d = app.vela.ui.Buildings3d.on.value
+        if (b3d != b3dShown) {
+            b3dShown = b3d
+            runCatching {
+                s.getLayer("building-3d")?.setProperties(
+                    org.maplibre.android.style.layers.PropertyFactory.visibility(
+                        if (b3d) org.maplibre.android.style.layers.Property.VISIBLE else org.maplibre.android.style.layers.Property.NONE,
+                    ),
+                )
+            }
+        }
         if (nav != fuelOnlyShown) {
             fuelOnlyShown = nav
             runCatching { app.vela.ui.map.applyPoiTierFilters(app.vela.ui.map.SnapshotterHost(s, styleLayerIds), fuelOnly = nav) }
@@ -881,9 +988,11 @@ class CarMapRenderer(
     private var frontClip: FrontClip? = null
 
     /** Draws [snap], rendered with the camera bearing [camUsed], and the overlays on it. [clip]
-     *  is the ground that camera can show. */
-    private fun draw(snap: MapSnapshot, camUsed: Double, clip: FrontClip) {
+     *  is the ground that camera can show. [frozen] is a weather frame over the same snapshot,
+     *  with the arrow where it was drawn on it. */
+    private fun draw(snap: MapSnapshot, camUsed: Double, clip: FrontClip, frozen: Boolean = false) {
         frontClip = clip
+        if (!frozen) { drawnPuck = puck; drawnHeading = heading; lastCamUsed = camUsed; lastClip = clip }
         val s = surface ?: return
         if (!s.isValid || width <= 0 || height <= 0) return
         val bmp = runCatching { snap.bitmap }.getOrNull()
@@ -915,6 +1024,8 @@ class CarMapRenderer(
                 runCatching { canvas.drawPath(pathOf(snap, preview.polyline, preview.polyline.indices, sx, sy), trafficPaints[0]!!) }
                 runCatching { drawDestination(canvas, snap, preview.polyline.last(), sx, sy) }
             }
+            runCatching { drawPolice(canvas, snap, sx, sy) }
+            runCatching { drawWeather(canvas, camUsed) }
             if (!navigating()) resultPins.forEachIndexed { i, at -> runCatching { drawResultPin(canvas, snap, at, i + 1, sx, sy) } }
             runCatching { drawPuck(canvas, snap, sx, sy, camUsed) } // puck always drawn
             // The speed badge on the drive screen and in drive mode, unless Settings > Navigation
@@ -924,6 +1035,33 @@ class CarMapRenderer(
         } finally {
             runCatching { s.unlockCanvasAndPost(canvas) }
         }
+    }
+
+    /** The phone's police reports (SPEC 4.9), the phone's badge from zoom 10 as on the phone,
+     *  sized like a light glyph. */
+    private fun drawPolice(canvas: Canvas, snap: MapSnapshot, sx: Float, sy: Float) {
+        if (zoom < POLICE_MIN_ZOOM) return
+        val reports = app.vela.data.PoliceReports.reports.value
+        if (reports.isEmpty()) return
+        val bmp = policeBadge ?: app.vela.ui.map.PoliceLayer.badge().also { policeBadge = it }
+        val px = controlGlyphPx(minOf(width, height), zoom) * POLICE_SCALE
+        for (r in reports) {
+            val pt = project(snap, r.loc, sx, sy) ?: continue
+            glyphRect.set(pt.x - px / 2f, pt.y - px / 2f, pt.x + px / 2f, pt.y + px / 2f)
+            canvas.drawBitmap(bmp, null, glyphRect, glyphBlit)
+        }
+    }
+    private var policeBadge: android.graphics.Bitmap? = null
+
+    /** The weather effects over the map, under the pins and the arrow, as on the phone. */
+    private fun drawWeather(canvas: Canvas, camUsed: Double) {
+        val w = app.vela.ui.map.WeatherFx.carShown ?: return
+        val now = android.os.SystemClock.uptimeMillis()
+        weatherPainter.tick(w, now)
+        val t = ((now / 1000.0) % 10_000.0).toFloat()
+        val wind = (((w.windFromDeg + 180.0 - camUsed) % 360.0 + 360.0) % 360.0).toFloat()
+        val blocky = app.vela.ui.MapColors.mapcraft() && app.vela.ui.MapLook.style.value.painted
+        weatherPainter.paintOn(canvas, width, height, carContext.resources.displayMetrics.density, w, t, themedNight ?: isNight(), wind, blocky)
     }
 
     /** [p] on the surface, or null when it is behind the snapshot's camera: tilted, the
@@ -1038,7 +1176,8 @@ class CarMapRenderer(
     }
 
     private fun drawPuck(canvas: Canvas, snap: MapSnapshot, sx: Float, sy: Float, camUsed: Double) {
-        val here = puck ?: return
+        val here = drawnPuck ?: return
+        val heading = drawnHeading
         val pt = project(snap, here, sx, sy) ?: return
         // Sized to the SCREEN, not a fixed pixel count: a fixed 22 px radius was a fifth of the
         // height of a 480 px head unit (user 2026-09-19, "the puck on the car stereo is huge").

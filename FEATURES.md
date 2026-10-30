@@ -352,7 +352,9 @@ What Vela Maps does today, one line per feature. How each one works is in [SPEC.
 - With no route the map does the same once you move, and a Drive button puts the list away for a
   map-only view with the speed badge.
 - The car map has the phone's parking lot, plaza, field and trail fills, and shows the traffic
-  layer when it is on.
+  layer when it is on. It takes the phone's map colors (Mapcraft too), map look, light or dark
+  map and 3D buildings setting, and changes with them while connected.
+- Weather effects on the car map, for the place the car map shows, and police reports as badges.
 - Buttons for the voice and end over the map, plus recenter and overview; pause, zoom and the
   search along the route stay on the phone. The voice button steps on, alerts only and off, like
   the phone's.
